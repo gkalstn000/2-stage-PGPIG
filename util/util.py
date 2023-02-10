@@ -157,10 +157,11 @@ def save_image(image_numpy, image_path, create_dir=False):
         image_numpy = np.repeat(image_numpy, 3, 2)
     if image_numpy.shape[0] == 3 :
         image_numpy = np.transpose(image_numpy, (1, 2, 0))
-    image_pil = Image.fromarray(image_numpy).resize((176, 256))
+    image_pil = Image.fromarray(image_numpy)#.resize((176, 256))
 
     # save to png
-    image_pil.save(image_path.replace('.jpg', '.png'))
+    # image_pil.save(image_path.replace('png', 'jpg'))
+    image_pil.save(image_path)
 
 def map_to_img(tensor, threshold = 0.5) :
     '''
