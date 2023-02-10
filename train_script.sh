@@ -40,4 +40,4 @@ python train.py --id original_instance --tf_log --gpu_ids 1 --type_En_c default 
 python train.py --id DPTN_higher --tf_log --gpu_ids 2 --batchSize 25 --type_En_c default --type_Dc default --pose_nc 18
 
 # red DPTN_spade
-train.py --id DPTN_spade --tf_log --gpu_ids 2,3 --type_En_c spade --type_Dc spade --pose_nc 18 --batchSize 28
+train.py --id DPTN_spade --tf_log --gpu_ids 1,2 --type_En_c spade --type_Dc spade --pose_nc 18 --batchSize 28 --continue_train
