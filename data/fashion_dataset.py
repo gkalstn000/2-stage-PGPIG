@@ -109,7 +109,9 @@ class FashionDataset(BaseDataset) :
                       'tgt_map' : BP2,
                       'canonical_image' : PC,
                       'canonical_map' : BPC,
-                      'path' : PC_name}
+                      'path' : PC_name,
+                      'T_ST' : T_ST,
+                      'T_ST_inv' : T_ST_inv}
 
         return input_dict
 

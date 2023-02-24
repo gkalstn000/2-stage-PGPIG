@@ -28,7 +28,7 @@ class DPTNModel(nn.Module) :
 
 
     def forward(self, data, mode):
-        src_image, src_map, tgt_image, tgt_map, can_image, can_map = self.preprocess_input(data)
+        src_image, src_map, tgt_image, tgt_map, can_image, can_map, self.T_ST, self.T_ST_inv = self.preprocess_input(data)
         if mode == 'generator':
 
             g_loss, fake_t, fake_s = self.compute_generator_loss(src_image, src_map,
@@ -78,20 +78,17 @@ class DPTNModel(nn.Module) :
         return netG, netD
     def preprocess_input(self, data):
         if self.use_gpu():
-            # data['src_image'] = data['src_image'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            # data['src_map'] = data['src_map'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            # data['tgt_image'] = data['tgt_image'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            # data['tgt_map'] = data['tgt_map'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            # data['canonical_image'] = data['canonical_image'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            # data['canonical_map'] = data['canonical_map'].to(f'cuda:{self.opt.gpu_ids[0]}')
             data['src_image'] = data['src_image'].float().cuda()
             data['src_map'] = data['src_map'].float().cuda()
             data['tgt_image'] = data['tgt_image'].float().cuda()
             data['tgt_map'] = data['tgt_map'].float().cuda()
             data['canonical_image'] = data['canonical_image'].float().cuda()
             data['canonical_map'] = data['canonical_map'].float().cuda()
+            data['T_ST'] = data['T_ST'].float().cuda()
+            data['T_ST_inv'] = data['T_ST_inv'].float().cuda()
 
-        return data['src_image'], data['src_map'], data['tgt_image'], data['tgt_map'], data['canonical_image'], data['canonical_map']
+        return data['src_image'], data['src_map'], data['tgt_image'], data['tgt_map'], data['canonical_image'], data['canonical_map'], \
+            data['T_ST'], data['T_ST_inv']
         # return data['canonical_image'], data['canonical_map'], data['tgt_image'], data['tgt_map'], data['canonical_image'], data['canonical_map']
 
     def backward_G_basic(self, fake_image, target_image, use_d):
@@ -179,6 +176,7 @@ class DPTNModel(nn.Module) :
         fake_image_t, fake_image_s, first_attn_weights, last_attn_weights = self.netG(src_image, src_map,
                                                                                       tgt_map,
                                                                                       can_image, can_map,
+                                                                                      self.T_ST, self.T_ST_inv,
                                                                                       is_train)
 
         self.first_attn_weights = first_attn_weights

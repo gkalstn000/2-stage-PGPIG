@@ -129,7 +129,48 @@ class DefaultEncoder(BaseNetwork):
             x = model(x)
         return x
 
+class TransEncoder(nn.Module):
+    """
+    Source Image Encoder (En_s)
+    :param image_nc: number of channels in input image
+    :param ngf: base filter channel
+    :param img_f: the largest feature channels
+    :param encoder_layer: encoder layers
+    :param norm: normalization function 'instance, batch, group'
+    :param activation: activation function 'ReLU, SELU, LeakyReLU, PReLU'
+    :param use_spect: use spectual normalization
+    :param use_coord: use coordConv operation
+    """
 
+    def __init__(self, opt):
+        super(TransEncoder, self).__init__()
+        self.opt = opt
+        self.encoder_layer = opt.layers_g
+        self.mult = opt.mult
+
+        norm_layer = modules.get_norm_layer(norm_type=opt.norm)
+        nonlinearity = modules.get_nonlinearity_layer(activation_type=opt.activation)
+
+        for i in range(opt.layers_g - 1):
+            block = modules.ResBlock(opt.ngf * self.mult, opt.ngf * self.mult, norm_layer=norm_layer,
+                                     nonlinearity=nonlinearity, use_spect=opt.use_spect_g, use_coord=opt.use_coord)
+            setattr(self, 'encoder' + str(i), block)
+
+    def forward(self, x, transformaion_matrix):
+        x = self.apply_transformation(x, transformaion_matrix)
+        for i in range(self.encoder_layer - 1):
+            model = getattr(self, 'encoder' + str(i))
+            x = model(x)
+        return x
+
+    def apply_transformation(self, F_S_S, T_ST):
+        # Reshape the feature maps to (N, 1, C, H, W)
+        # Generate a grid of coordinates that correspond to the input tensor
+        grid = torch.nn.functional.affine_grid(T_ST[:, :2, :], F_S_S.size())
+        # Apply the transformation to the feature maps
+        F_S_T = torch.nn.functional.grid_sample(F_S_S, grid)
+        # Remove the extra dimension
+        return F_S_T
 class SourceEncoder(nn.Module):
     """
     Source Image Encoder (En_s)

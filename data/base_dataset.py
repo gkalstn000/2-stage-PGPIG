@@ -85,7 +85,7 @@ class BaseDataset(data.Dataset):
         TST[:2, :2] = R
         TST[:2, 2] = t
         TST_inv = np.linalg.inv(TST)
-        self.check_trans(B_S, B_T, TST, TST_inv)
+        # self.check_trans(B_S, B_T, TST, TST_inv)
         return TST, TST_inv
 
     def check_trans(self, B_S, B_T, TST, TST_inv) :
