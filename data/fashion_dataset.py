@@ -6,7 +6,7 @@ import pandas as pd
 import torchvision.transforms.functional as F
 import torchvision.transforms as transforms
 import torch
-
+import time
 from tqdm import tqdm, trange
 import numpy as np
 
@@ -83,8 +83,11 @@ class FashionDataset(BaseDataset) :
         P1_img = F.resize(P1_img, self.load_size)
         P2_img = F.resize(P2_img, self.load_size)
         Canonical_img = F.resize(Canonical_img, self.load_size)
-
+        # start = time.time()
         T_ST, T_ST_inv = self.calculate_transformation_matrix(P1_name, P2_name)
+        # end = time.time()
+        # print(f"Transformation matrix cal time: {end - start:.5f} sec")
+
         # P1 preprocessing
         P1 = self.trans(P1_img)
         # BP1 = self.obtain_bone(P1_name)

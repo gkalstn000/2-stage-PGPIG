@@ -67,6 +67,7 @@ class DPTNGenerator(BaseNetwork):
         input_s_t = torch.cat((source_image, source_bone, target_bone), 1)
         # F_s_t = self.En_c(input_s_t, texture_information)
         F_s_t = self.TEn_s(F_s_s, T_ST)
+        F_s_s_cycle = self.TEn_s(F_s_t, T_ST_inv)
 
         # Source Image Encoding
         F_s = self.En_s(source_image)
@@ -78,4 +79,4 @@ class DPTNGenerator(BaseNetwork):
             out_image_s = self.De(F_s_s, texture_information)
         # Source-to-target Decoder
         out_image_t = self.De(F_s_t, texture_information)
-        return out_image_t, out_image_s, first_attn_weights, last_attn_weights
+        return out_image_t, out_image_s, (F_s_s_cycle, F_s_s.detach()), first_attn_weights, last_attn_weights

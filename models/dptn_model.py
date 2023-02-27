@@ -24,6 +24,7 @@ class DPTNModel(nn.Module) :
         if opt.isTrain:
             self.GANloss = loss.GANLoss(opt.gan_mode).cuda()
             self.L1loss = torch.nn.L1Loss()
+            self.L2loss = torch.nn.MSELoss()
             self.Vggloss = loss.VGGLoss().cuda()
 
 
@@ -122,12 +123,23 @@ class DPTNModel(nn.Module) :
                                                         self.opt.isTrain)
         loss_app_gen_t, loss_ad_gen_t, loss_style_gen_t, loss_content_gen_t = self.backward_G_basic(fake_image_t, tgt_image, use_d=True)
         loss_app_gen_s, _, loss_style_gen_s, loss_content_gen_s = self.backward_G_basic(fake_image_s, src_image, use_d=False)
+
+        #Cycle loss part
+        cycle_src_image, _, _, _, _ =  self.netG(fake_image_t, tgt_map,
+                                        src_map,
+                                        can_image, can_map,
+                                        self.T_ST_inv, self.T_ST,
+                                        False)
+        L1_cycle_image = self.L1loss(cycle_src_image, src_image)
+        L2_cycle_featuremap = self.L2loss(self.F_s_s_cycle, self.F_s_s)
         self.netD.train()
         G_losses['L1_target'] = self.opt.t_s_ratio * loss_app_gen_t
         G_losses['GAN_target'] = loss_ad_gen_t
         G_losses['VGG_target'] =  self.opt.t_s_ratio * (loss_style_gen_t + loss_content_gen_t)
         G_losses['L1_source'] = (1-self.opt.t_s_ratio) * loss_app_gen_s
         G_losses['VGG_source'] = (1-self.opt.t_s_ratio) * (loss_style_gen_s + loss_content_gen_s)
+        G_losses['Cycle'] = L1_cycle_image + L2_cycle_featuremap
+
 
         return G_losses, fake_image_t, fake_image_s
     def backward_D_basic(self, real, fake):
@@ -151,9 +163,10 @@ class DPTNModel(nn.Module) :
         self.netG.eval()
         D_losses = {}
         with torch.no_grad():
-            fake_image_t, fake_image_s, _, _ = self.netG(src_image, src_map,
+            fake_image_t, fake_image_s, _, _, _ = self.netG(src_image, src_map,
                                                    tgt_map,
-                                                   can_image, can_map)
+                                                   can_image, can_map,
+                                                            self.T_ST, self.T_ST_inv,)
             fake_image_t = fake_image_t.detach()
             fake_image_t.requires_grad_()
             fake_image_s = fake_image_s.detach()
@@ -173,12 +186,13 @@ class DPTNModel(nn.Module) :
                       can_image, can_map,
                       is_train=True):
 
-        fake_image_t, fake_image_s, first_attn_weights, last_attn_weights = self.netG(src_image, src_map,
+        fake_image_t, fake_image_s, (F_s_s_cycle, F_s_s), first_attn_weights, last_attn_weights = self.netG(src_image, src_map,
                                                                                       tgt_map,
                                                                                       can_image, can_map,
                                                                                       self.T_ST, self.T_ST_inv,
                                                                                       is_train)
-
+        self.F_s_s_cycle = F_s_s_cycle
+        self.F_s_s = F_s_s
         self.first_attn_weights = first_attn_weights
         self.last_attn_weights = last_attn_weights
         return fake_image_t, fake_image_s
