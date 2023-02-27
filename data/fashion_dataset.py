@@ -106,6 +106,24 @@ class FashionDataset(BaseDataset) :
         # self.check_bone_img_matching(P2, BP2, f'tmp/check_obtainbone/full_{index}_tgt.jpg')
         # self.check_bone_img_matching(PC, BPC, f'tmp/check_obtainbone/full_{index}_can.jpg')
 
+        T_ST = torch.Tensor(T_ST)
+        T_ST_inv = torch.Tensor(T_ST_inv)
+        grid = torch.nn.functional.affine_grid(T_ST[:2, :][None, :, :], (1, 3, 256, 256))
+        grid_inv = torch.nn.functional.affine_grid(T_ST_inv[:2, :][None, :, :], (1, 3, 256, 256))
+        P1_trans = torch.nn.functional.grid_sample(P1[None, :, :], grid).squeeze()
+        P2_trans = torch.nn.functional.grid_sample(P2[None, :, :], grid_inv).squeeze()
+
+        P1_img = util.tensor_to_PIL(P1)
+        P2_img = util.tensor_to_PIL(P2)
+        P1_trans_img = util.tensor_to_PIL(P1_trans)
+        P2_trans_img = util.tensor_to_PIL(P2_trans)
+
+        util.print_PILimg(P1_img)
+        util.print_PILimg(P2_img)
+        util.print_PILimg(P1_trans_img)
+        util.print_PILimg(P2_trans_img)
+
+
         input_dict = {'src_image' : P1,
                       'src_map': BP1,
                       'tgt_image' : P2,
