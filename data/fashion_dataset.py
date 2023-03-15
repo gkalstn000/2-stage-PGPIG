@@ -51,7 +51,7 @@ class FashionDataset(BaseDataset) :
         self.cum_time = 0
         self.count = 0
 
-        self.Positional_matrix = util.positional_matrix(opt.load_size, opt.pose_nc)
+        self.Positional_matrix = util.positional_matrix(opt.load_size, 1)
 
     def get_paths(self, opt):
         root = opt.dataroot
@@ -94,23 +94,23 @@ class FashionDataset(BaseDataset) :
         # T_ST, T_ST_inv = self.calculate_transformation_matrix(P1_name, P2_name)
         # P1 preprocessing
         P1 = self.trans(P1_img)
-        # BP1 = self.obtain_bone(P1_name)
-        BP1 = torch.load(os.path.join(self.opt.dataroot, f'{self.phase}_map', P1_name.replace('jpg', 'pt')))[:self.opt.pose_nc]
+        BP1 = self.obtain_bone(P1_name)
+        # BP1 = torch.load(os.path.join(self.opt.dataroot, f'{self.phase}_map', P1_name.replace('jpg', 'pt')))[:self.opt.pose_nc]
         # P2 preprocessing
         P2 = self.trans(P2_img)
-        # BP2 = self.obtain_bone(P2_name)
-        BP2 = torch.load(os.path.join(self.opt.dataroot, f'{self.phase}_map', P2_name.replace('jpg', 'pt')))[:self.opt.pose_nc]
+        BP2 = self.obtain_bone(P2_name)
+        # BP2 = torch.load(os.path.join(self.opt.dataroot, f'{self.phase}_map', P2_name.replace('jpg', 'pt')))[:self.opt.pose_nc]
 
         if self.opt.pos_encoding :
             BP1_pos = self.obtain_bone_pos(P1_name)
             BP1 = BP1 + BP1_pos
-            BP1_max, BP1_min = BP1.view(self.opt.pose_nc, -1).max(-1, keepdims=True)[0], BP1.view(self.opt.pose_nc, -1).min(-1, keepdims=True)[0]
-            BP1 = (BP1 - BP1_min.unsqueeze(1)) / (BP1_max - BP1_min).unsqueeze(1)
+            # BP1_max, BP1_min = BP1.view(self.opt.pose_nc, -1).max(-1, keepdims=True)[0], BP1.view(self.opt.pose_nc, -1).min(-1, keepdims=True)[0]
+            BP1 = (BP1 + 1) / 3
 
             BP2_pos = self.obtain_bone_pos(P2_name)
             BP2 = BP2 + BP2_pos
-            BP2_max, BP2_min = BP2.view(self.opt.pose_nc, -1).max(-1, keepdims=True)[0], BP2.view(self.opt.pose_nc, -1).min(-1, keepdims=True)[0]
-            BP2 = (BP2 - BP2_min.unsqueeze(1)) / (BP2_max - BP2_min).unsqueeze(1)
+            # BP2_max, BP2_min = BP2.view(self.opt.pose_nc, -1).max(-1, keepdims=True)[0], BP2.view(self.opt.pose_nc, -1).min(-1, keepdims=True)[0]
+            BP2 = (BP2 + 1) / 3
         # Canonical_img
         # PC = self.trans(Canonical_img)
         # BPC = self.obtain_bone(PC_name)

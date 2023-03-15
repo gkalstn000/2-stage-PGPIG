@@ -57,10 +57,11 @@ class DPTNGenerator(BaseNetwork):
 
     def forward(self, source_image, source_bone, target_bone,
                 canonical_image, canonical_bone, is_train=True):
+        texture_information = [source_bone, source_image]  # [canonical_bone, source_bone, source_image]
         # Encode source-to-source
-        F_s_s = self.En_c(source_bone, source_bone, source_image)
+        F_s_s = self.En_c(source_bone, source_bone, source_image, texture_information)
         # Encode source-to-target
-        F_s_t = self.En_c(target_bone, source_bone, source_image)
+        F_s_t = self.En_c(target_bone, source_bone, source_image, texture_information)
 
         # Source Image Encoding
         F_s = self.En_s(source_image)
@@ -69,7 +70,6 @@ class DPTNGenerator(BaseNetwork):
         # Source-to-source Decoder (only for training)
         out_image_s = None
         if is_train:
-            texture_information = [source_bone, source_image] # [canonical_bone, source_bone, source_image]
             out_image_s = self.De(F_s_s, texture_information)
         # Source-to-target Decoder
         texture_information = [source_bone, source_image] # [target_bone, source_bone, source_image]

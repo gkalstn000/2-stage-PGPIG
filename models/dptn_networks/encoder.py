@@ -76,8 +76,9 @@ class SpadeEncoder(BaseNetwork) :
             setattr(self, 'mblock' + str(i), block)
 
         self.down = nn.MaxPool2d(2, stride=2)
-    def forward(self, x, texture_information):
+    def forward(self, bone1, bone2, img2, texture_information):
         texture_information = torch.cat(texture_information, 1)
+        x = torch.cat([img2, bone2, bone1], 1)
 
         x = self.head_0(x, texture_information)
         x = self.down(x)
@@ -170,7 +171,8 @@ class DefaultEncoder(BaseNetwork):
                                      nonlinearity=nonlinearity, use_spect=opt.use_spect_g, use_coord=opt.use_coord)
             setattr(self, 'mblock' + str(i), block)
 
-    def forward(self, x, texture_information):
+    def forward(self, bone1, bone2, img2, texture_information = None):
+        x = torch.cat([img2, bone2, bone1], 1)
         # Source-to-source Encoder
         x = self.block0(x) # (B, C, H, W) -> (B, ngf, H/2, W/2)
         for i in range(self.layers - 1):

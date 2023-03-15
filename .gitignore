@@ -1,4 +1,3 @@
-/datasets/fashion/
 /old_results/
 /results/
 /checkpoints/
@@ -6,3 +5,4 @@
 /*.out
 /attention_map/
 /eval_results/
+/datasets/
