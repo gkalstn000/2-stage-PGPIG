@@ -44,6 +44,10 @@ python train.py --id DPTN_higher_spade_full --tf_log --gpu_ids 3 --type_En_c spa
 python train.py --id DPTN_higher_spade_dec --tf_log --gpu_ids 0 --type_En_c default --type_Dc spade --pose_nc 18 --batchSize 24 --continue_train
 python train.py --id DPTN_higher_spade_enc --tf_log --gpu_ids 1 --type_En_c spade --type_Dc default --pose_nc 18 --batchSize 15 --continue_train
 
+# DPTN market spade
+python train.py --id DPTN_market_spade_full --tf_log --gpu_ids 3 --type_En_c spade --type_Dc spade --pose_nc 18 --batchSize 100 --num_workers 30 --dataset_mode market --display_freq 10000 --continue_train
+
+
 
 
 python train.py --id DPTN_higher_spade_attn --tf_log --gpu_ids 0 --type_En_c attn --type_Dc spade --pose_nc 18 --batchSize 20 --num_workers 25 --continue_train --which_epoch 30
