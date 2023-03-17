@@ -54,12 +54,11 @@ for epoch in iter_counter.training_epochs():
 
         if iter_counter.needs_displaying():
             fake_target, fake_source = trainer.get_latest_generated()
-            visuals = OrderedDict([('src_image', data_i['src_image']),
-                                   ('synthesized_source_image', fake_source),
-                                   ('canonical_image', data_i['canonical_image']),
+            visuals = OrderedDict([('1src_image', data_i['src_image']),
+                                   ('1synthesized_source_image', fake_source),
                                    ('tgt_map', data_i['tgt_map']),
-                                   ('real_image', data_i['tgt_image']),
-                                   ('synthesized_target_image', fake_target),
+                                   ('2real_image', data_i['tgt_image']),
+                                   ('2synthesized_target_image', fake_target),
                                    ])
             visualizer.display_current_results(visuals, epoch, iter_counter.total_steps_so_far)
 
@@ -75,10 +74,9 @@ for epoch in iter_counter.training_epochs():
         # with torch.no_grad() :
         #     _, fake_target, fake_source = trainer.model(data_i, mode='generator')
         visuals = OrderedDict([('src_image_val', data_i['src_image']),
-                               ('canonical_image_val', data_i['canonical_image']),
                                ('tgt_map_val', data_i['tgt_map']),
-                               ('real_image_val', data_i['tgt_image']),
-                               ('synthesized_target_image_val', fake_target),
+                               ('3real_image_val', data_i['tgt_image']),
+                               ('3synthesized_target_image_val', fake_target),
                                ])
         visualizer.display_current_results(visuals, epoch, iter_counter.total_steps_so_far)
         break
