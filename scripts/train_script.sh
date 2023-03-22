@@ -45,7 +45,7 @@ nohup python train.py --id DPTN_higher_spade_dec --tf_log --gpu_ids 0 --type_En_
 nohup python train.py --id DPTN_higher_spade_enc --tf_log --gpu_ids 1 --type_En_c spade --type_Dc default --pose_nc 18 --batchSize 15 --continue_train > DPTN_higher_spade_enc.out &
 
 # DPTN market spade
-nohup python train.py --id DPTN_market_spade_full --tf_log --gpu_ids 3 --type_En_c spade --type_Dc spade --pose_nc 18 --batchSize 100 --num_workers 30 --dataset_mode market --display_freq 10000 --continue_train > DPTN_market_spade_full.out &
+nohup python train.py --id DPTN_market_spade_full --tf_log --gpu_ids 3 --type_En_c spade --type_Dc spade --pose_nc 18 --batchSize 50 --num_workers 30 --dataset_mode market --display_freq 10000 --continue_train > DPTN_market_spade_full.out &
 
 
 
