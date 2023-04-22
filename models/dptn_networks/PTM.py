@@ -2,6 +2,7 @@ import copy
 import torch
 from torch import nn
 from models.dptn_networks import modules
+import math
 
 class PoseTransformerModule(nn.Module):
     """
@@ -196,9 +197,99 @@ class TTB(nn.Module):
         return tgt, attn_output_weights
 
 
+class CrossAttnModule(nn.Module) :
+    def __init__(self, d_model, nhead, dim_feedforward=2048, affine=True):
+        super(CrossAttnModule, self).__init__()
+
+        self.attn_layer = nn.MultiheadAttention(d_model, nhead, batch_first=True)
+        self.fc_layer = nn.Sequential(nn.Linear(d_model, dim_feedforward),
+                                      nn.LeakyReLU(0.2, False),
+                                      nn.Linear(dim_feedforward, d_model),
+                                      nn.Dropout(p=0.2))
+
+        self.norm1 = nn.InstanceNorm1d(d_model, affine=affine)
+        self.norm2 = nn.InstanceNorm1d(d_model, affine=affine)
+        self.actvn = nn.LeakyReLU(0.2, False)
+
+    def forward(self, query, key, value):
+        '''
+        :param query: (b, n, c)
+        :param key:  (b, n, c)
+        :param value:  (b, n, c)
+        :return:
+        '''
+        attn_output, _ = self.attn_layer(query, key, value)
+        x = value + attn_output
+        x = self.norm1(x.permute(0, 2, 1)).permute(0, 2, 1)
+        x = self.actvn(x)
+
+        ff_output = self.actvn(self.fc_layer(x))
+        x = x + ff_output
+        x = self.norm2(x.permute(0, 2, 1)).permute(0, 2, 1)
+        x = self.actvn(x)
+
+        return x
+class TPM(nn.Module):
+    """
+    Texture Transfer Block (TTB)
+    :param d_model: number of channels in input
+    :param nhead: number of heads in attention module
+    :param dim_feedforward: dimension in feedforward
+    :param activation: activation function 'ReLU, SELU, LeakyReLU, PReLU'
+    :param affine: affine in normalization
+    :param norm: normalization function 'instance, batch'
+    """
+    def __init__(self, d_model, nhead, dim_feedforward=2048, affine=True):
+        super(TPM, self).__init__()
+        self.layer1 = CrossAttnModule(d_model, nhead, dim_feedforward, affine)
+        self.layer2 = CrossAttnModule(d_model, nhead, dim_feedforward, affine)
+        self.layer3 = CrossAttnModule(d_model, nhead, dim_feedforward, affine)
+
+        self.actvn = nn.LeakyReLU(0.2, False)
+        self.pos_encoder = PositionalEncoding(d_model)
+
+    def with_pos_embed(self, tensor, pos):
+        return tensor if pos is None else self.pos_encoder(tensor)
+
+    def forward(self, query, KV, pos = True):
+        '''
+        :param query: (b, c, n)
+        :param key:  (b, c, n)
+        :param value:  (b, c, n)
+        :param pos: (1, c, n)
+        :return:
+        '''
+        query = query.permute(0, 2, 1)
+        KV = KV.permute(0, 2, 1)
+
+        query = self.with_pos_embed(query, pos)
+        key = value = self.with_pos_embed(KV, pos)
+
+        x = self.layer1(query, key, value)
+        x = self.layer2(query, key, x)
+        x = self.layer3(query, key, x)
+
+        x = x.permute(0, 2, 1)
+        return x
 
 
+class PositionalEncoding(torch.nn.Module):
+    def __init__(self, d_model, dropout=0.2, max_len=256):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = torch.nn.Dropout(p=dropout)
 
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + self.pe
+        return self.dropout(x)
 
 def _get_clones(module, N):
     return nn.ModuleList([copy.deepcopy(module) for i in range(N)])

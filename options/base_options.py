@@ -43,6 +43,7 @@ class BaseOptions():
         parser.add_argument('--nThreads', default=2, type=int, help='# threads for loading data')
         parser.add_argument('--img_f', type=int, default=512, help="the largest feature channels")
 
+
         # for displays
         parser.add_argument('--display_winsize', type=int, default=400, help='display window size')
 

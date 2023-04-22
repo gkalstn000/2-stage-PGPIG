@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from models.dptn_networks import define_En_c, define_De
 from models.dptn_networks.base_network import BaseNetwork
+import random
 from models.spade_networks.architecture import SPADEResnetBlock
 import torch.nn.functional as F
 
@@ -48,16 +49,35 @@ class DPTNGenerator(BaseNetwork):
         return parser
     def __init__(self, opt):
         super(DPTNGenerator, self).__init__()
+        ndf = opt.ngf
         self.opt = opt
         self.z_encoder = define_En_c(opt)
+
+        self.so = s0 = 4
+        self.fc_mu = nn.Linear(ndf * 8 * s0 * s0, self.opt.z_dim)
+        self.fc_var = nn.Linear(ndf * 8 * s0 * s0, self.opt.z_dim)
+
         self.decoder = define_De(opt)
     def forward(self, texture, bone):
-        encoder_input = torch.cat([texture], 1)
-        z, z_dict = self.z_encoder(encoder_input)
+        if random.random() < 0.1: # unconditional case
+            texture = torch.zeros_like(texture, device=texture.device)
+            bone = torch.zeros_like(bone, device=bone.device)
+        x_uncond = self.z_encoder(torch.zeros_like(texture, device=texture.device), torch.zeros_like(bone, device=bone.device))
+        x_pose = self.z_encoder(torch.zeros_like(texture, device=texture.device), bone) - x_uncond
+        x_texture = self.z_encoder(texture, torch.zeros_like(bone, device=bone.device)) - x_uncond
+        x = x_uncond + 2 * x_pose + 2 * x_texture
 
-        external_information = [bone]
-        x = self.decoder(z, external_information)
+        mu = self.fc_mu(x)
+        logvar = self.fc_var(x)
+
+        noise = self.reparameterize(mu, logvar)
+        z_dict = {'texture': [mu, logvar]}
+
+        x = self.decoder(noise)
 
         return x, z_dict
 
-
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return eps.mul(std) + mu

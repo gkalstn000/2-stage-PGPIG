@@ -111,8 +111,8 @@ class ResBlockDecoder(nn.Module):
     Define a decoder block
     """
 
-    def __init__(self, input_nc, output_nc, hidden_nc=None, norm_layer=nn.BatchNorm2d, nonlinearity=nn.LeakyReLU(),
-                 use_spect=False, use_coord=False):
+    def __init__(self, input_nc, output_nc, hidden_nc=None, norm_layer=nn.InstanceNorm2d, nonlinearity=nn.LeakyReLU(0.2, False),
+                 use_spect=True, use_coord=False):
         super(ResBlockDecoder, self).__init__()
 
         hidden_nc = output_nc if hidden_nc is None else hidden_nc

@@ -5,6 +5,7 @@ from models.dptn_networks import modules
 from models.dptn_networks.base_network import BaseNetwork
 from models.spade_networks.architecture import SPADEResnetBlock
 from models.spade_networks.normalization import get_nonspade_norm_layer
+from models.dptn_networks.PTM import TPM
 import math
 from models.dptn_networks import encoder
 import numpy as np
@@ -55,53 +56,86 @@ class SpadeEncoder(BaseNetwork) :
             x = model(x)
         return self.mu(x), self.var(x)
 
-class ZEncoder(BaseNetwork):
+class NoiseEncoder(BaseNetwork):
     def __init__(self, opt):
-        super(ZEncoder, self).__init__()
+        super(NoiseEncoder, self).__init__()
         self.opt = opt
 
         kw = 3
         pw = int(np.ceil((kw - 1.0) / 2))
         ndf = opt.ngf
-        input_nc = opt.image_nc
         norm_layer = get_nonspade_norm_layer(opt, opt.norm_E)
 
-        self.layer1 = norm_layer(nn.Conv2d(input_nc, ndf, kw, stride=2, padding=pw))
-        self.layer2 = norm_layer(nn.Conv2d(ndf * 1, ndf * 2, kw, stride=2, padding=pw))
-        self.layer3 = norm_layer(nn.Conv2d(ndf * 2, ndf * 4, kw, stride=2, padding=pw))
-        self.layer4 = norm_layer(nn.Conv2d(ndf * 4, ndf * 8, kw, stride=2, padding=pw))
-        self.layer5 = norm_layer(nn.Conv2d(ndf * 8, ndf * 8, kw, stride=2, padding=pw))
-        self.layer6 = norm_layer(nn.Conv2d(ndf * 8, ndf * 8, kw, stride=2, padding=pw))
+        # Texture Encoder layers
+        input_nc = opt.image_nc
+        self.TClayer1 = norm_layer(nn.Conv2d(input_nc, ndf, kw, stride=2, padding=pw))
+        self.TClayer2 = norm_layer(nn.Conv2d(ndf * 1, ndf * 2, kw, stride=2, padding=pw))
+        self.TClayer3 = norm_layer(nn.Conv2d(ndf * 2, ndf * 4, kw, stride=2, padding=pw))
+        self.TClayer4 = norm_layer(nn.Conv2d(ndf * 4, ndf * 4, kw, stride=2, padding=pw))
+
+        self.TFlayer = nn.Sequential(nn.Linear(256, self.opt.z_dim),
+                                     nn.InstanceNorm1d(num_features=self.opt.z_dim),
+                                     nn.Dropout(p=0.2))
+        # Pose Encoder layers
+        input_nc = opt.pose_nc
+        self.PClayer1 = norm_layer(nn.Conv2d(input_nc, ndf, kw, stride=2, padding=pw))
+        self.PClayer2 = norm_layer(nn.Conv2d(ndf * 1, ndf * 2, kw, stride=2, padding=pw))
+        self.PClayer3 = norm_layer(nn.Conv2d(ndf * 2, ndf * 4, kw, stride=2, padding=pw))
+        self.PClayer4 = norm_layer(nn.Conv2d(ndf * 4, ndf * 4, kw, stride=2, padding=pw))
+        self.PFlayer = nn.Sequential(nn.Linear(256, self.opt.z_dim),
+                                     nn.InstanceNorm1d(num_features=self.opt.z_dim),
+                                     nn.Dropout(p=0.2))
+
+
+        # [Noise, Pose] encoder
+        self.NPlayer = nn.Sequential(nn.Linear(512, self.opt.z_dim),
+                                     nn.InstanceNorm1d(num_features=self.opt.z_dim),
+                                     nn.Dropout(p=0.2))
+
+        # Texture-Pose attn module
+        self.TPM = TPM(ndf * 4, 2)
 
         self.actvn = nn.LeakyReLU(0.2, False)
-
         self.so = s0 = 4
-        self.fc_mu = nn.Linear(ndf * 8 * s0 * s0, self.opt.z_dim)
-        self.fc_var = nn.Linear(ndf * 8 * s0 * s0, self.opt.z_dim)
-    def forward(self, x):
-        if x.size(2) != 256 or x.size(3) != 256:
-            x = F.interpolate(x, size=(256, 256), mode='bilinear')
 
-        x = self.layer1(x)              # 256x256 -> 128x128
-        x = self.layer2(self.actvn(x))  # 128x128 -> 64x64
-        x = self.layer3(self.actvn(x))  # 64x64 -> 32x32
-        x = self.layer4(self.actvn(x))  # 32x32 -> 16x16
-        x = self.layer5(self.actvn(x))  # 16x16 -> 8x8
-        x = self.layer6(self.actvn(x))  # 8x8 -> 4x4
-        x = self.actvn(x)
+        self.final_nc = nn.Sequential(nn.Linear(self.opt.z_dim * self.opt.z_dim, ndf * 8 * s0 * s0),
+                                      nn.InstanceNorm1d(num_features=ndf * 8 * s0 * s0))
+
+    def forward(self, texture, pose):
+        if texture.size(2) != 256 or texture.size(3) != 256:
+            texture = F.interpolate(texture, size=(256, 256), mode='bilinear')
+
+        # Texture 'x' encoding
+        texture = self.TClayer1(texture)              # 256x256 -> 128x128
+        texture = self.TClayer2(self.actvn(texture))  # 128x128 -> 64x64
+        texture = self.TClayer3(self.actvn(texture))  # 64x64 -> 32x32
+        texture = self.TClayer4(self.actvn(texture))  # 32x32 -> 16x16
+        texture = self.actvn(texture)
+        b, c, h, w = texture.size()
+        texture = texture.view(b, c, h*w)  # 16x16 -> 256
+        texture = self.TFlayer(texture) # b, c, 256
+
+        # Pose 'c' encoding
+        pose = self.PClayer1(pose)              # 256x256 -> 128x128
+        pose = self.PClayer2(self.actvn(pose))  # 128x128 -> 64x64
+        pose = self.PClayer3(self.actvn(pose))  # 64x64 -> 32x32
+        pose = self.PClayer4(self.actvn(pose))  # 32x32 -> 16x16
+        pose = self.actvn(pose)
+        pose = pose.view(b, c, h*w)  # 16x16 -> 256
+        pose = self.PFlayer(pose) # b, c, 256
+
+        # [Noise, Pose] encoding
+        noise = torch.randn((b, c, self.opt.z_dim), device=pose.device)
+        pose = torch.cat([noise, pose], -1)
+        pose = self.NPlayer(pose)
+
+        x = self.TPM(pose, texture)
 
         x = x.view(x.size(0), -1)
-        mu = self.fc_mu(x)
-        logvar = self.fc_var(x)
+        x = self.actvn(self.final_nc(x))
 
-        z = self.reparameterize(mu, logvar)
-        z_dict = {'texture': [mu, logvar]}
+        return x
 
-        return z, z_dict
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return eps.mul(std) + mu
 
 
 class SourceEncoder(nn.Module):
