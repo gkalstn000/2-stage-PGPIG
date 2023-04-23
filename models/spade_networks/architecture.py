@@ -34,20 +34,14 @@ class SPAINResnetBlock(nn.Module):
         # SPADE
         self.spade_conv_0 = spectral_norm(nn.Conv2d(fin, fmiddle, kernel_size=3, padding=1))
         self.spade_conv_1 = spectral_norm(nn.Conv2d(fmiddle, fout, kernel_size=3, padding=1))
-        if self.learned_shortcut:
-            self.spade_conv_s = spectral_norm(nn.Conv2d(fin, fout, kernel_size=1, bias=False))
 
         spade_config_str = opt.norm_G.replace('spectral', '')
         self.spade_norm_0 = SPADE(spade_config_str, fin, norm_nc)
         self.spade_norm_1 = SPADE(spade_config_str, fmiddle, norm_nc)
-        if self.learned_shortcut:
-            self.spade_norm_s = SPADE(spade_config_str, fin, norm_nc)
 
         # ADAIN
         self.adain_conv_0 = spectral_norm(nn.Conv2d(fin, fmiddle, kernel_size=3, padding=1))
         self.adain_conv_1 = spectral_norm(nn.Conv2d(fmiddle, fout, kernel_size=3, padding=1))
-        if self.learned_shortcut :
-            self.adain_conv_s = spectral_norm(nn.Conv2d(fin, fout, kernel_size=1, bias=False))
 
         self.adain_norm = AdaIN()
 
@@ -66,18 +60,6 @@ class SPAINResnetBlock(nn.Module):
         out = x_spade + x_adain
         return x + out
 
-    def spade_shortcut(self, x, pose_information):
-        if self.learned_shortcut:
-            x_s = self.spade_conv_s(self.spade_norm_s(x, pose_information))
-        else:
-            x_s = x
-        return x_s
-    def adain_shortcut(self, x, texture_information):
-        if self.learned_shortcut:
-            x_s = self.adain_conv_s(self.adain_norm(x, texture_information))
-        else:
-            x_s = x
-        return x_s
     def actvn(self, x):
         return F.leaky_relu(x, 2e-1)
 

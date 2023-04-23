@@ -23,7 +23,8 @@ class NoiseEncoder(BaseNetwork):
         # Texture Encoder layers
         self.Texture_encoder = GetEncoder(opt, 'texture')
         self.Pose_encoder = GetEncoder(opt, 'pose')
-        self.noise_mapping = MappingNetwork(z_dim=512, w_dim=opt.z_dim, hidden_dim=2048)
+        self.noise_mapping = MappingNetwork(z_dim=opt.z_dim, w_dim=opt.z_dim, hidden_dim=opt.z_dim)
+        self.noise_fc = nn.Linear(opt.z_dim, 1024)
 
         self.head = norm_layer(nn.Conv2d(1, ndf, kw, stride=1, padding=pw))
 
@@ -41,16 +42,18 @@ class NoiseEncoder(BaseNetwork):
             texture = F.interpolate(texture, size=(256, 256), mode='bilinear')
 
         #  texture/pose encoding
-        texture = self.Texture_encoder(texture) # (b, c, 16, 16)
-        pose = self.Pose_encoder(pose) # (b, c, 16, 16)
+        texture = self.Texture_encoder(texture) # (b, ndf, 32, 32)
+        pose = self.Pose_encoder(pose) # (b, ndf, 32, 32)
 
 
         # [Noise, Pose] encoding
         b, c, h_, w_ = pose.size()
-        z = torch.randn((b, 512), device=pose.device)
+        z = torch.randn((b, self.opt.z_dim), device=pose.device)
         w = self.noise_mapping(z)
-        w = w.view(b, 1, h_, w_) # (b, 1, 16, 16)
-        w = self.head(w) # (b, ndf, 16, 16)
+        w = self.noise_fc(w)
+
+        w = w.view(b, 1, h_, w_) # (b, 1, 32, 32)
+        w = self.head(w) # (b, ndf, 32, 32)
 
         w = self.spain_layer1(w, pose, texture)
         w = self.spain_layer2(w, pose, texture)
@@ -83,9 +86,10 @@ class GetEncoder(BaseNetwork) :
         self.layer1 = norm_layer(nn.Conv2d(input_nc, ndf, kw, stride=2, padding=pw)) # 256x256 -> 128x128
         self.layer2 = norm_layer(nn.Conv2d(ndf * 1, ndf * 2, kw, stride=2, padding=pw)) # 128x128 -> 64x64
         self.layer3 = norm_layer(nn.Conv2d(ndf * 2, ndf * 4, kw, stride=2, padding=pw)) # 64x64 -> 32x32
-        self.layer4 = norm_layer(nn.Conv2d(ndf * 4, ndf * 8, kw, stride=2, padding=pw)) # 32x32 -> 16x16
-        self.layer5 = norm_layer(nn.Conv2d(ndf * 8, ndf * 4, kw, stride=1, padding=pw))  # 16x16 -> 16x16
-        self.layer6 = norm_layer(nn.Conv2d(ndf * 4, ndf * 1, kw, stride=1, padding=pw))  # 16x16 -> 16x16
+        self.layer4 = norm_layer(nn.Conv2d(ndf * 4, ndf * 8, kw, stride=1, padding=pw)) # 32x32 -> 32x32
+        self.layer5 = norm_layer(nn.Conv2d(ndf * 8, ndf * 4, kw, stride=1, padding=pw))  # 32x32 -> 32x32
+        self.layer6 = norm_layer(nn.Conv2d(ndf * 4, ndf * 2, kw, stride=1, padding=pw))  # 32x32 -> 32x32
+        self.layer7 = norm_layer(nn.Conv2d(ndf * 2, ndf * 1, kw, stride=1, padding=pw))  # 32x32 -> 32x32
 
         self.actvn = nn.LeakyReLU(0.2, False)
     def forward(self, x) :
@@ -99,6 +103,7 @@ class GetEncoder(BaseNetwork) :
         x = self.layer4(self.actvn(x))
         x = self.layer5(self.actvn(x))
         x = self.layer6(self.actvn(x))
+        x = self.layer7(self.actvn(x))
         x = self.actvn(x)
 
         return x
