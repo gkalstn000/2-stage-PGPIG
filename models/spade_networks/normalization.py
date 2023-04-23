@@ -46,15 +46,15 @@ class SPADE(nn.Module):
         self.mlp_gamma = nn.Conv2d(nhidden, norm_nc, kernel_size=3, padding=1)
         self.mlp_beta = nn.Conv2d(nhidden, norm_nc, kernel_size=3, padding=1)
 
-    def forward(self, x, texture_information):
+    def forward(self, x, pose_information):
 
         # Part 1. generate parameter-free normalized activations
         normalized = self.param_free_norm(x)
 
         # Part 2. produce scaling and bias conditioned on semantic map
-        texture_information = F.interpolate(texture_information, size=x.size()[2:], mode='nearest')
+        pose_information = F.interpolate(pose_information, size=x.size()[2:], mode='nearest')
 
-        actv = self.mlp_shared(texture_information)
+        actv = self.mlp_shared(pose_information)
         gamma = self.mlp_gamma(actv) * 0.5
         beta = self.mlp_beta(actv) * 0.5
 
@@ -62,6 +62,33 @@ class SPADE(nn.Module):
         out = normalized * gamma + beta
 
         return out
+
+class AdaIN(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def mu(self, x):
+        """ Takes a (n,c,h,w) tensor as input and returns the average across
+        it's spatial dimensions as (h,w) tensor [See eq. 5 of paper]"""
+        return torch.sum(x,(2,3))/(x.shape[2]*x.shape[3])
+
+    def sigma(self, x):
+        """ Takes a (n,c,h,w) tensor as input and returns the standard deviation
+        across it's spatial dimensions as (h,w) tensor [See eq. 6 of paper] Note
+        the permutations are required for broadcasting"""
+        return torch.sqrt((torch.sum((x.permute([2,3,0,1])-self.mu(x)).permute([2,3,0,1])**2,(2,3))+0.000000023)/(x.shape[2]*x.shape[3]))
+
+    def forward(self, x, texture_information):
+        """ Takes a content embeding x and a style embeding y and changes
+        transforms the mean and standard deviation of the content embedding to
+        that of the style. [See eq. 8 of paper] Note the permutations are
+        required for broadcasting"""
+        return (self.sigma(texture_information)*((x.permute([2,3,0,1])-self.mu(x))/self.sigma(x)) + self.mu(texture_information)).permute([2,3,0,1])
+
+
+
+
+
 def get_nonspade_norm_layer(opt, norm_type='instance'):
     # helper function to get # output channels of the previous layer
     def get_out_channel(layer):

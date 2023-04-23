@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
 import torch.nn.utils.spectral_norm as spectral_norm
-from models.spade_networks.normalization import SPADE
+from models.spade_networks.normalization import SPADE, AdaIN
 
 
 # ResNet block that uses SPADE.
@@ -18,7 +18,7 @@ from models.spade_networks.normalization import SPADE
 # This architecture seemed like a standard architecture for unconditional or
 # class-conditional GAN architecture using residual block.
 # The code was inspired from https://github.com/LMescheder/GAN_stability.
-class SPADEResnetBlock(nn.Module):
+class SPAINResnetBlock(nn.Module):
     def __init__(self, fin, fout, opt, norm_nc):
         '''
         :param fin: input dim of main feature map
@@ -31,46 +31,56 @@ class SPADEResnetBlock(nn.Module):
         self.learned_shortcut = (fin != fout)
         fmiddle = min(fin, fout)
 
-        # create conv layers
-        self.conv_0 = nn.Conv2d(fin, fmiddle, kernel_size=3, padding=1)
-        self.conv_1 = nn.Conv2d(fmiddle, fout, kernel_size=3, padding=1)
+        # SPADE
+        self.spade_conv_0 = spectral_norm(nn.Conv2d(fin, fmiddle, kernel_size=3, padding=1))
+        self.spade_conv_1 = spectral_norm(nn.Conv2d(fmiddle, fout, kernel_size=3, padding=1))
         if self.learned_shortcut:
-            self.conv_s = nn.Conv2d(fin, fout, kernel_size=1, bias=False)
+            self.spade_conv_s = spectral_norm(nn.Conv2d(fin, fout, kernel_size=1, bias=False))
 
-        # apply spectral norm if specified
-        self.conv_0 = spectral_norm(self.conv_0)
-        self.conv_1 = spectral_norm(self.conv_1)
-        if self.learned_shortcut:
-            self.conv_s = spectral_norm(self.conv_s)
-
-        cond_norm = SPADE
         spade_config_str = opt.norm_G.replace('spectral', '')
-        self.norm_0 = cond_norm(spade_config_str, fin, norm_nc)
-        self.norm_1 = cond_norm(spade_config_str, fmiddle, norm_nc)
+        self.spade_norm_0 = SPADE(spade_config_str, fin, norm_nc)
+        self.spade_norm_1 = SPADE(spade_config_str, fmiddle, norm_nc)
         if self.learned_shortcut:
-            self.norm_s = cond_norm(spade_config_str, fin, norm_nc)
+            self.spade_norm_s = SPADE(spade_config_str, fin, norm_nc)
+
+        # ADAIN
+        self.adain_conv_0 = spectral_norm(nn.Conv2d(fin, fmiddle, kernel_size=3, padding=1))
+        self.adain_conv_1 = spectral_norm(nn.Conv2d(fmiddle, fout, kernel_size=3, padding=1))
+        if self.learned_shortcut :
+            self.adain_conv_s = spectral_norm(nn.Conv2d(fin, fout, kernel_size=1, bias=False))
+
+        self.adain_norm = AdaIN()
+
+
 
     # note the resnet block with SPADE also takes in |seg|,
     # the semantic segmentation map as input
-    def forward(self, x, texture_information):
-        x_s = self.shortcut(x, texture_information)
+    def forward(self, x, pose_information, texture_information):
+        # SPADE Residual part
+        x_spade = self.spade_conv_0(self.actvn(self.spade_norm_0(x, pose_information)))
+        x_spade = self.spade_conv_1(self.actvn(self.spade_norm_1(x_spade, pose_information)))
 
-        dx = self.conv_0(self.actvn(self.norm_0(x, texture_information)))
-        dx = self.conv_1(self.actvn(self.norm_1(dx, texture_information)))
+        # ADAIN Residual part
+        x_adain = self.adain_conv_0(self.actvn(self.adain_norm(x, texture_information)))
+        x_adain = self.adain_conv_1(self.actvn(self.adain_norm(x_adain, texture_information)))
+        out = x_spade + x_adain
+        return x + out
 
-        out = x_s + dx
-
-        return out
-
-    def shortcut(self, x, texture_information):
+    def spade_shortcut(self, x, pose_information):
         if self.learned_shortcut:
-            x_s = self.conv_s(self.norm_s(x, texture_information))
+            x_s = self.spade_conv_s(self.spade_norm_s(x, pose_information))
         else:
             x_s = x
         return x_s
-
+    def adain_shortcut(self, x, texture_information):
+        if self.learned_shortcut:
+            x_s = self.adain_conv_s(self.adain_norm(x, texture_information))
+        else:
+            x_s = x
+        return x_s
     def actvn(self, x):
         return F.leaky_relu(x, 2e-1)
+
 
 if __name__ == "__main__" :
     conv0 = nn.Conv2d(10, 10, kernel_size=3, padding=1)

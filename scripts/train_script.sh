@@ -9,8 +9,10 @@ nohup python train.py --id VAE_DPTN --tf_log --gpu_ids 0 --type_En_c attn --type
 
 
 # Red
-nohup python train.py --id spade_light --tf_log --gpu_ids 2 --type_En_c z --type_Dc spade --pose_nc 41 --batchSize 20 --num_workers 15 --dataroot /datasets/msha/fashion > spade_light.out &
+nohup python train.py --id spade_light --tf_log --gpu_ids 2 --type_En_c z --type_Dc spade --pose_nc 41 --batchSize 20 --num_workers 15 --dataroot /datasets/msha/fashion > spade_light.out & # stop at 0422
 nohup python train.py --id VAE_CF --tf_log --gpu_ids 1 --type_En_c noise --type_Dc default --pose_nc 41 --batchSize 10 --num_workers 20 --dataroot /datasets/msha/fashion --continue_train> VAE_CF.out &
+nohup python train.py --id SPAIN --tf_log --gpu_ids 2 --type_En_c noise --type_Dc default --pose_nc 41 --batchSize 30 --num_workers 20 --dataroot /datasets/msha/fashion > SPAIN.out &
+
 
 # In NIPA
 nohup python train.py --id spade_d --tf_log --gpu_ids 0 --type_En_c z --type_Dc spade --pose_nc 41 --batchSize 35 --num_workers 7 --dataroot /home/work/msha/datasets/fashion > spade_d.out &

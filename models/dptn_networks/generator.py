@@ -8,7 +8,6 @@ import torch.nn as nn
 from models.dptn_networks import define_En_c, define_De
 from models.dptn_networks.base_network import BaseNetwork
 import random
-from models.spade_networks.architecture import SPADEResnetBlock
 import torch.nn.functional as F
 
 from models.dptn_networks import encoder
@@ -53,9 +52,9 @@ class DPTNGenerator(BaseNetwork):
         self.opt = opt
         self.z_encoder = define_En_c(opt)
 
-        self.so = s0 = 4
-        self.fc_mu = nn.Linear(ndf * 8 * s0 * s0, self.opt.z_dim)
-        self.fc_var = nn.Linear(ndf * 8 * s0 * s0, self.opt.z_dim)
+        self.so = s0 = 16
+        self.fc_mu = nn.Linear(ndf * s0 * s0, self.opt.z_dim)
+        self.fc_var = nn.Linear(ndf * s0 * s0, self.opt.z_dim)
 
         self.decoder = define_De(opt)
     def forward(self, texture, bone):
