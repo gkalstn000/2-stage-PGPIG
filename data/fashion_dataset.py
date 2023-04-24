@@ -67,35 +67,26 @@ class FashionDataset(BaseDataset) :
 
     def __getitem__(self, index):
         P1_name, P2_name = self.name_pairs[index]
-        PC_name = f'{P1_name.replace(".jpg", "")}_2_{P2_name.replace(".jpg", "")}_vis.jpg'
+        save_filename = f'{P1_name.replace(".jpg", "")}_2_{P2_name.replace(".jpg", "")}_vis.jpg'
 
         P1_path = os.path.join(self.image_dir, P1_name) # person 1
         P2_path = os.path.join(self.image_dir, P2_name) # person 2
 
-        if self.phase == 'train' :
-            P1_img = Image.open(P1_path).convert('RGB')
-            P1_img = F.resize(P1_img, self.load_size)
-            texture = self.trans(P1_img)
+        P1_img = Image.open(P1_path).convert('RGB')
+        P1_img = F.resize(P1_img, self.load_size)
+        P1 = self.trans(P1_img)
+        P2_img = Image.open(P2_path).convert('RGB')
+        P2_img = F.resize(P2_img, self.load_size)
+        P2 = self.trans(P2_img)
 
-            bone = self.obtain_bone(P1_name)
+        BP1 = self.obtain_bone(P1_name)
+        BP2 = self.obtain_bone(P2_name)
 
-            ground_truth = texture
-
-        else :
-            P1_img = Image.open(P1_path).convert('RGB')
-            P1_img = F.resize(P1_img, self.load_size)
-            texture = self.trans(P1_img)
-
-            bone = self.obtain_bone(P2_name)
-
-            P2_img = Image.open(P2_path).convert('RGB')
-            P2_img = F.resize(P2_img, self.load_size)
-            ground_truth = self.trans(P2_img)
-
-        input_dict = {'texture' : texture,
-                      'bone': bone,
-                      'ground_truth': ground_truth,
-                      'path' : PC_name}
+        input_dict = {'src_img' : P1,
+                      'src_bone': BP1,
+                      'tgt_img': P2,
+                      'tgt_bone': BP2,
+                      'path' : save_filename}
 
 
         return input_dict

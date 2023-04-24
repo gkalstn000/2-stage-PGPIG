@@ -52,19 +52,24 @@ class DPTNGenerator(BaseNetwork):
         self.opt = opt
         self.z_encoder = define_En_c(opt)
 
-        self.so = s0 = 16
+        self.so = s0 = 32
         self.fc_mu = nn.Linear(ndf * s0 * s0, self.opt.z_dim)
         self.fc_var = nn.Linear(ndf * s0 * s0, self.opt.z_dim)
 
         self.decoder = define_De(opt)
-    def forward(self, texture, bone):
-        if random.random() < 0.1: # unconditional case
-            texture = torch.zeros_like(texture, device=texture.device)
-            bone = torch.zeros_like(bone, device=bone.device)
-        x_uncond = self.z_encoder(torch.zeros_like(texture, device=texture.device), torch.zeros_like(bone, device=bone.device))
-        x_pose = self.z_encoder(torch.zeros_like(texture, device=texture.device), bone) - x_uncond
-        x_texture = self.z_encoder(texture, torch.zeros_like(bone, device=bone.device)) - x_uncond
-        x = x_uncond + 2 * x_pose + 2 * x_texture
+    def forward(self, src_img, src_bone, tgt_bone):
+        if self.opt.cf_guidance :
+            if random.random() < 0.05: # unconditional case
+                src_img = torch.zeros_like(src_img, device=src_img.device)
+                src_bone = torch.zeros_like(src_bone, device=src_bone.device)
+            x_uncond = self.z_encoder(torch.zeros_like(src_img, device=src_img.device), torch.zeros_like(src_bone, device=src_bone.device))
+            x_pose = self.z_encoder(torch.zeros_like(src_img, device=src_img.device), src_bone) - x_uncond
+            x_texture = self.z_encoder(src_img, torch.zeros_like(src_bone, device=src_bone.device)) - x_uncond
+            x = x_uncond + 2 * x_pose + 2 * x_texture
+        else :
+            x = self.z_encoder(src_img, src_bone)
+
+        x = x.view(x.size(0), -1)
 
         mu = self.fc_mu(x)
         logvar = self.fc_var(x)
@@ -72,7 +77,7 @@ class DPTNGenerator(BaseNetwork):
         noise = self.reparameterize(mu, logvar)
         z_dict = {'texture': [mu, logvar]}
 
-        x = self.decoder(noise)
+        x = self.decoder(noise, tgt_bone)
 
         return x, z_dict
 

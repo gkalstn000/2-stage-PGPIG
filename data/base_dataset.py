@@ -39,10 +39,6 @@ class BaseDataset(data.Dataset):
         limb = torch.Tensor(limb)
 
         return torch.cat([keypoint, limb])
-    def get_canonical_pose(self):
-        return ['[28, 54, 54, 93, 130, 55, 95, 131, 117, 180, 233, 117, 178, 230, 24, 23, 27, 26]',
-                '[88, 88, 67, 66, 63, 108, 111, 119, 78, 82, 81, 103, 100, 91, 84, 93, 77, 100]']
-
 
     def coord_to_PIL(self, coord) :
         heatmap = self.obtain_bone_with_coord(coord)

@@ -78,12 +78,17 @@ class AdaIN(nn.Module):
         the permutations are required for broadcasting"""
         return torch.sqrt((torch.sum((x.permute([2,3,0,1])-self.mu(x)).permute([2,3,0,1])**2,(2,3))+0.000000023)/(x.shape[2]*x.shape[3]))
 
-    def forward(self, x, texture_information):
+    def forward(self, x, style):
         """ Takes a content embeding x and a style embeding y and changes
         transforms the mean and standard deviation of the content embedding to
         that of the style. [See eq. 8 of paper] Note the permutations are
         required for broadcasting"""
-        return (self.sigma(texture_information)*((x.permute([2,3,0,1])-self.mu(x))/self.sigma(x)) + self.mu(texture_information)).permute([2,3,0,1])
+        x_mean = self.mu(x)
+        x_var = self.sigma(x)
+        style_mean = self.mu(style)
+        style_var = self.sigma(style)
+
+        return (style_var*((x.permute([2,3,0,1])-x_mean)/x_var) + style_mean).permute([2,3,0,1])
 
 
 

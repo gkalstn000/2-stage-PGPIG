@@ -24,24 +24,24 @@ class DPTNModel(nn.Module) :
         if opt.isTrain:
             self.GANloss = loss.GANLoss(opt.gan_mode, tensor=self.FloatTensor, opt=self.opt).cuda()
             self.L1loss = torch.nn.L1Loss()
-            self.Vggloss = loss.VGGLoss().cuda()
+            self.Vggloss = loss.VGGLoss()
             self.L2loss = torch.nn.MSELoss()
             self.KLDLoss = loss.KLDLoss()
 
 
     def forward(self, data, mode):
-        texture, bone, ground_truth = self.preprocess_input(data)
+        src_img, src_bone, tgt_image, tgt_bone = self.preprocess_input(data)
         if mode == 'generator':
 
-            g_loss, fake_t = self.compute_generator_loss(texture, bone)
+            g_loss, fake_t = self.compute_generator_loss(src_img, src_bone, tgt_image, tgt_bone)
             return g_loss, fake_t
         elif mode == 'discriminator':
-            d_loss = self.compute_discriminator_loss(texture, bone)
+            d_loss = self.compute_discriminator_loss(src_img, src_bone, tgt_image, tgt_bone)
             return d_loss
         elif mode == 'inference' :
             self.netG.eval()
             with torch.no_grad():
-                fake_image_t, z_dict = self.generate_fake(texture, bone)
+                fake_image_t, z_dict = self.generate_fake(src_img, src_bone, tgt_bone)
             return fake_image_t
     def create_optimizers(self, opt):
         G_params = list(self.netG.parameters())
@@ -73,41 +73,25 @@ class DPTNModel(nn.Module) :
         return netG, netD
     def preprocess_input(self, data):
         if self.use_gpu():
-            data['texture'] = data['texture'].float().cuda()
-            data['bone'] = data['bone'].float().cuda()
-            data['ground_truth'] = data['ground_truth'].float().cuda()
+            data['src_img'] = data['src_img'].float().cuda()
+            data['src_bone'] = data['src_bone'].float().cuda()
+            data['tgt_img'] = data['tgt_img'].float().cuda()
+            data['tgt_bone'] = data['tgt_bone'].float().cuda()
 
-        return data['texture'], data['bone'], data['ground_truth']
 
-    def backward_G_basic(self, fake_image, target_image):
-        # Calculate reconstruction loss
-        loss_app_gen = self.L1loss(fake_image, target_image)
-        loss_app_gen = loss_app_gen * self.opt.lambda_rec
+        return data['src_img'], data['src_bone'], data['tgt_img'], data['tgt_bone']
 
-        # Calculate perceptual loss
-        loss_content_gen, loss_style_gen = self.Vggloss(fake_image, target_image)
-        loss_style_gen = loss_style_gen * self.opt.lambda_style
-        loss_content_gen = loss_content_gen * self.opt.lambda_content
-
-        return loss_app_gen, loss_style_gen, loss_content_gen
-    def compute_generator_loss(self, texture, bone):
-        self.netD.eval()
-        self.netG.train()
+    def compute_generator_loss(self, src_img, src_bone, tgt_image, tgt_bone):
         G_losses = {}
 
-        fake_image, z_dict = self.generate_fake(texture, bone)
-
-        pred_fake, pred_real = self.backward_D_basic(bone, fake_image, texture)
-
-        loss_app_gen_t, loss_style_gen_t, loss_content_gen_t = self.backward_G_basic(fake_image, texture)
-
-        self.netD.train()
+        fake_image, z_dict = self.generate_fake(src_img, src_bone, tgt_bone)
+        pred_fake, pred_real = self.discriminate(tgt_bone, fake_image, tgt_image)
 
         # G_losses['L1_cycle'] = self.opt.t_s_ratio * self.L1loss(fake_image_s_cycle, src_image) * self.opt.lambda_rec
         G_losses['GAN'] = self.GANloss(pred_fake, True, for_discriminator=False)
-        G_losses['VGG_target'] =  self.opt.t_s_ratio * (loss_style_gen_t + loss_content_gen_t)
-        G_losses['KLD_texture_loss'] = self.KLDLoss(z_dict['texture']) * self.opt.lambda_kld
-        G_losses['L1_loss'] = loss_app_gen_t * self.opt.lambda_rec
+        G_losses['VGG_loss'] =  self.Vggloss(fake_image, tgt_image) * self.opt.lambda_vgg
+        G_losses['KLD_loss'] = self.KLDLoss(z_dict['texture']) * self.opt.lambda_kld
+        # G_losses['L1_loss'] = self.L1loss(fake_image, tgt_image) * self.opt.lambda_rec
 
         if not self.opt.no_ganFeat_loss:
             num_D = len(pred_fake)
@@ -123,7 +107,7 @@ class DPTNModel(nn.Module) :
 
 
         return G_losses, fake_image
-    def backward_D_basic(self, bone_map, fake, real):
+    def discriminate(self, bone_map, fake, real):
         fake_concat = torch.cat([bone_map, fake], dim=1)
         real_concat = torch.cat([bone_map, real], dim=1)
         fake_and_real = torch.cat([fake_concat, real_concat], dim=0)
@@ -132,23 +116,23 @@ class DPTNModel(nn.Module) :
         pred_fake, pred_real = self.divide_pred(discriminator_out)
 
         return pred_fake, pred_real
-    def compute_discriminator_loss(self, texture, bone):
+    def compute_discriminator_loss(self, src_img, src_bone, tgt_image, tgt_bone):
         D_losses = {}
         with torch.no_grad():
-            fake_image_t, _ = self.generate_fake(texture, bone)
+            fake_image_t, _ = self.generate_fake(src_img, src_bone, tgt_bone)
             fake_image_t = fake_image_t.detach()
             fake_image_t.requires_grad_()
 
-        pred_fake, pred_real = self.backward_D_basic(bone, fake_image_t, texture)
+        pred_fake, pred_real = self.discriminate(tgt_bone, fake_image_t, tgt_image)
 
         D_losses['D_fake'] = self.GANloss(pred_fake, False, for_discriminator=True)
         D_losses['D_real'] = self.GANloss(pred_real, True, for_discriminator=True)
 
         return D_losses
 
-    def generate_fake(self, texture, bone):
+    def generate_fake(self, src_img, src_bone, tgt_bone):
 
-        fake_image_t, z_dict = self.netG(texture, bone)
+        fake_image_t, z_dict = self.netG(src_img, src_bone, tgt_bone)
 
         return fake_image_t, z_dict
     def use_gpu(self):
