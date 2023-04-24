@@ -64,7 +64,7 @@ class NoiseEncoder(BaseNetwork):
         w = self.spain_layer7(w, pose, texture)
         w = self.spain_layer8(w, pose, texture)
 
-        return w.view(w.size(0), -1)
+        return w
 
 class GetEncoder(BaseNetwork) :
     def __init__(self, opt, type):

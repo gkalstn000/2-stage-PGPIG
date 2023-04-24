@@ -52,13 +52,11 @@ class SPAINResnetBlock(nn.Module):
     def forward(self, x, pose_information, texture_information):
         # SPADE Residual part
         x_spade = self.spade_conv_0(self.actvn(self.spade_norm_0(x, pose_information)))
-        x_spade = self.spade_conv_1(self.actvn(self.spade_norm_1(x_spade, pose_information)))
+        x_adain = self.adain_conv_0(self.actvn(self.adain_norm(x_spade, texture_information)))
+        x_spade = self.spade_conv_1(self.actvn(self.spade_norm_1(x_adain, pose_information)))
+        x_adain = self.adain_conv_1(self.actvn(self.adain_norm(x_spade, texture_information)))
 
-        # ADAIN Residual part
-        x_adain = self.adain_conv_0(self.actvn(self.adain_norm(x, texture_information)))
-        x_adain = self.adain_conv_1(self.actvn(self.adain_norm(x_adain, texture_information)))
-        out = x_spade + x_adain
-        return x + out
+        return x + x_adain
 
     def actvn(self, x):
         return F.leaky_relu(x, 2e-1)
