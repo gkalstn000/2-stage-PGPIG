@@ -42,6 +42,7 @@ class DPTNModel(nn.Module) :
             self.netG.eval()
             with torch.no_grad():
                 fake_image_t, z_dict = self.generate_fake(src_img, src_bone, tgt_bone)
+            self.netG.train()
             return fake_image_t
     def create_optimizers(self, opt):
         G_params = list(self.netG.parameters())

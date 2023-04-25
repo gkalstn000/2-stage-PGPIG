@@ -64,8 +64,9 @@ class SPADE(nn.Module):
         return out
 
 class AdaIN(nn.Module):
-    def __init__(self):
+    def __init__(self, norm_nc):
         super().__init__()
+        self.param_free_norm = nn.InstanceNorm2d(norm_nc, affine=False)
 
     def mu(self, x):
         """ Takes a (n,c,h,w) tensor as input and returns the average across
@@ -83,6 +84,9 @@ class AdaIN(nn.Module):
         transforms the mean and standard deviation of the content embedding to
         that of the style. [See eq. 8 of paper] Note the permutations are
         required for broadcasting"""
+        x = self.param_free_norm(x)
+        style = F.interpolate(style, size=x.size()[2:], mode='nearest')
+
         x_mean = self.mu(x)
         x_var = self.sigma(x)
         style_mean = self.mu(style)

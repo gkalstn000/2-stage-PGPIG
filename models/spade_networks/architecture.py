@@ -96,7 +96,8 @@ class SPAINResnetBlock(nn.Module):
         self.adain_conv_0 = spectral_norm(nn.Conv2d(fin, fmiddle, kernel_size=3, padding=1))
         self.adain_conv_1 = spectral_norm(nn.Conv2d(fmiddle, fout, kernel_size=3, padding=1))
 
-        self.adain_norm = AdaIN()
+        self.adain_norm_0 = AdaIN(fin)
+        self.adain_norm_1 = AdaIN(fmiddle)
 
 
 
@@ -105,9 +106,9 @@ class SPAINResnetBlock(nn.Module):
     def forward(self, x, pose_information, texture_information):
         # SPADE Residual part
         x_spade = self.spade_conv_0(self.actvn(self.spade_norm_0(x, pose_information)))
-        x_adain = self.adain_conv_0(self.actvn(self.adain_norm(x_spade, texture_information)))
+        x_adain = self.adain_conv_0(self.actvn(self.adain_norm_0(x_spade, texture_information)))
         x_spade = self.spade_conv_1(self.actvn(self.spade_norm_1(x_adain, pose_information)))
-        x_adain = self.adain_conv_1(self.actvn(self.adain_norm(x_spade, texture_information)))
+        x_adain = self.adain_conv_1(self.actvn(self.adain_norm_1(x_spade, texture_information)))
 
         return x + x_adain
 
