@@ -32,7 +32,6 @@ class DPTNModel(nn.Module) :
     def forward(self, data, mode):
         src_img, src_bone, tgt_image, tgt_bone = self.preprocess_input(data)
         if mode == 'generator':
-
             g_loss, fake_t = self.compute_generator_loss(src_img, src_bone, tgt_image, tgt_bone)
             return g_loss, fake_t
         elif mode == 'discriminator':
@@ -83,6 +82,8 @@ class DPTNModel(nn.Module) :
         return data['src_img'], data['src_bone'], data['tgt_img'], data['tgt_bone']
 
     def compute_generator_loss(self, src_img, src_bone, tgt_image, tgt_bone):
+        self.netG.train()
+        self.netD.train()
         G_losses = {}
 
         fake_image, z_dict = self.generate_fake(src_img, src_bone, tgt_bone)
@@ -106,6 +107,10 @@ class DPTNModel(nn.Module) :
                     GAN_Feat_loss += unweighted_loss * self.opt.lambda_feat / num_D
             G_losses['GAN_Feat'] = GAN_Feat_loss
 
+        for key, val in G_losses.items() :
+            if torch.isnan(val).any():
+                raise ValueError(f"{key} Loss is 'nan', stopping training.")
+
 
         return G_losses, fake_image
     def discriminate(self, bone_map, fake, real):
@@ -118,6 +123,8 @@ class DPTNModel(nn.Module) :
 
         return pred_fake, pred_real
     def compute_discriminator_loss(self, src_img, src_bone, tgt_image, tgt_bone):
+        self.netG.train()
+        self.netD.train()
         D_losses = {}
         with torch.no_grad():
             fake_image_t, _ = self.generate_fake(src_img, src_bone, tgt_bone)

@@ -23,8 +23,7 @@ class NoiseEncoder(BaseNetwork):
         # Texture Encoder layers
         self.Texture_encoder = GetEncoder(opt, 'texture')
         self.Pose_encoder = GetEncoder(opt, 'pose')
-        self.noise_mapping = MappingNetwork(z_dim=opt.z_dim, w_dim=opt.z_dim, hidden_dim=opt.z_dim)
-        self.noise_fc = nn.Linear(opt.z_dim, 1024)
+        self.noise_mapping = MappingNetwork(z_dim=opt.z_dim, w_dim=1024, hidden_dim=opt.z_dim)
 
         self.head = norm_layer(nn.Conv2d(1, ndf, kw, stride=1, padding=pw))
 
@@ -50,7 +49,6 @@ class NoiseEncoder(BaseNetwork):
         b, c, h_, w_ = pose.size()
         z = torch.randn((b, self.opt.z_dim), device=pose.device)
         w = self.noise_mapping(z)
-        w = self.noise_fc(w)
 
         w = w.view(b, 1, h_, w_) # (b, 1, 32, 32)
         w = self.head(w) # (b, ndf, 32, 32)
@@ -131,7 +129,9 @@ class MappingNetwork(nn.Module):
             nn.LeakyReLU(0.2, inplace=True),
             nn.Linear(hidden_dim, hidden_dim),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(hidden_dim, w_dim)
+            nn.Linear(hidden_dim, w_dim),
+            nn.LeakyReLU(0.2, inplace=True),
+
         )
 
     def forward(self, z):
