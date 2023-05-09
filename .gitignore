@@ -6,3 +6,5 @@
 /*.out
 /attention_map/
 /eval_results/
+/custom/interpolation_results/
+/custom/interpolation_results_/
