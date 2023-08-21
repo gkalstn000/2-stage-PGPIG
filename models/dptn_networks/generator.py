@@ -35,7 +35,7 @@ class DPTNGenerator(BaseNetwork):
     def modify_commandline_options(parser, is_train):
         parser.add_argument('--activation', type=str, default='LeakyReLU', help='type of activation function')
         parser.add_argument('--type_En_c', type=str, default='default', help='selects En_c type to use for generator (default | spade | spadeattn)')
-        parser.add_argument('--type_Dc', type=str, default='default', help='selects Dc type to use for generator (default | spade | spadeattn)')
+        parser.add_argument('--type_Dc', type=str, default='spade', help='selects Dc type to use for generator (default | spade | spadeattn)')
 
         parser.set_defaults(use_spect_g=True)
         parser.set_defaults(use_coord=False)
@@ -48,7 +48,7 @@ class DPTNGenerator(BaseNetwork):
         # Encoder En_c
         # self.En_c = encoder.DefaultEncoder(opt)
         self.En_c = define_En_c(opt)
-        opt.mult = self.En_c.mult
+        opt.mult = 4
         # Pose Transformer Module (PTM)
         self.PTM = PTM.PoseTransformerModule(opt=opt)
         # SourceEncoder En_s
@@ -61,34 +61,23 @@ class DPTNGenerator(BaseNetwork):
     def get_pose_encoder(self, step):
         return self.positional_encoding(step)
 
-    def forward(self,
-                source_bone,
-                target_bone,
-                source_img_step,
-                xt,
-                step):
-        b, c, h, w = source_img_step.size()
-        pt = self.positional_encoding(step).view(1, 1, h, w)
-        xt = xt + pt
+    def forward(self, src_image, src_map, tgt_map):
 
-        ps = self.positional_encoding(step+1).view(1, 1, h, w)
-        source_img_step = source_img_step + ps
 
         texture_information = None  # [canonical_bone, source_bone, source_image]
         # Encode source-to-source
-        F_s_s = self.En_c(source_bone, source_img_step, texture_information)
+        F_s_s, e_s_s = self.En_c(src_image, src_map, src_map)
         # Encode source-to-target
-        F_s_t = self.En_c(target_bone, xt, texture_information)
-
+        F_s_t, e_s_t = self.En_c(src_image, src_map, tgt_map)
         # Source Image Encoding
-        F_s = self.En_s(source_img_step)
+        F_s = self.En_s(src_image)
         # Pose Transformer Module for Dual-task Correlation
         F_s_t, _, _ = self.PTM(F_s_s, F_s_t, F_s)
         # Source-to-source Decoder (only for training)
-        out_image_s = self.De(F_s_s, texture_information)
+        out_image_s = self.De(F_s_s, e_s_s)
         # Source-to-target Decoder
         texture_information = None # [target_bone, source_bone, source_image]
-        out_image_t = self.De(F_s_t, texture_information)
+        out_image_t = self.De(F_s_t, e_s_t)
 
         return out_image_t, out_image_s
 

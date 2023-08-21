@@ -27,19 +27,9 @@ import math
 # |norm_nc|: the #channels of the normalized activations, hence the output dim of SPADE
 # |label_nc|: the #channels of the input semantic map, hence the input dim of SPADE
 class SPADE(nn.Module):
-    def __init__(self, norm_type, norm_nc, texture_information_nc):
+    def __init__(self, norm_nc, texture_information_nc):
         super().__init__()
-
-        if norm_type == 'instance':
-            self.param_free_norm = nn.InstanceNorm2d(norm_nc, affine=False)
-        elif norm_type == 'batch':
-            self.param_free_norm = nn.BatchNorm2d(norm_nc, affine=False)
-        elif norm_type == 'syncbatch':
-            self.param_free_norm = SynchronizedBatchNorm2d(norm_nc, affine=False)
-
-        else:
-            raise ValueError('%s is not a recognized param-free norm type in SPADE'
-                             % param_free_norm_type)
+        self.param_free_norm = nn.InstanceNorm2d(norm_nc, affine=False)
 
         # The dimension of the intermediate embedding space. Yes, hardcoded.
         nhidden = 128

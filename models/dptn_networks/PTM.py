@@ -18,7 +18,7 @@ class PoseTransformerModule(nn.Module):
     def __init__(self, opt):
         super(PoseTransformerModule, self).__init__()
         self.opt = opt
-        d_model = opt.ngf * opt.mult
+        d_model = opt.ngf * 4
         encoder_layer = CAB(d_model, opt.nhead, d_model,
                                                 opt.activation, opt.affine, opt.norm)
         if opt.norm == 'batch':

@@ -12,28 +12,26 @@ class SpadeDecoder(BaseNetwork) :
         self.opt = opt
         self.layers = opt.layers_g
         nf = opt.ngf
-        mult = opt.mult
+        mult = 4
 
-        self.sw, self.sh = self.compute_latent_vector_size(opt)
-
-        input_nc = 2 * opt.pose_nc + opt.image_nc
-
-        for i in range(self.layers):
-            mult_prev = mult
-            mult = min(2 ** (self.layers - i - 2), opt.img_f // opt.ngf) if i != self.layers - 1 else 1
-            down = SPADEResnetBlock(nf * mult_prev, nf * mult, opt, 'decoder')
-            setattr(self, 'decoder' + str(i), down)
+        self.decoder1 = SPADEResnetBlock(nf * 4, nf * 2, nf * 4)
+        self.up1 = nn.ConvTranspose2d(nf * 2, nf * 2, 2, stride=2)
+        self.decoder2 = SPADEResnetBlock(nf * 2, nf * 1, nf * 2)
+        self.up2 = nn.ConvTranspose2d(nf * 1, nf * 1, 2, stride=2)
+        self.decoder3 = SPADEResnetBlock(nf * 1, nf * 1, nf * 1)
+        self.up3 = nn.ConvTranspose2d(nf * 1, nf * 1, 2, stride=2)
 
         self.conv_img = nn.Conv2d(nf, 3, 3, padding=1)
-        self.up = nn.Upsample(scale_factor=2)
 
     def forward(self, x, texture_information):
-        texture_information = torch.cat(texture_information, 1)
+        e1, e2, e3 = texture_information
 
-        for i in range(self.layers):
-            model = getattr(self, 'decoder' + str(i))
-            x = model(x, texture_information)
-            x = self.up(x)
+        x = self.decoder1(x, e3)
+        x = self.up1(x)
+        x = self.decoder2(x, e2)
+        x = self.up2(x)
+        x = self.decoder3(x, e1)
+        x = self.up3(x)
 
         x = self.conv_img(F.leaky_relu(x, 2e-1))
         x = F.tanh(x)

@@ -16,7 +16,7 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--save_epoch_freq', type=int, default=5, help='frequency of saving checkpoints at the end of epochs')
         parser.add_argument('--no_html', action='store_true', help='do not save intermediate training results to [opt.checkpoints_dir]/[opt.name]/web/')
         parser.add_argument('--debug', action='store_true', help='only do one epoch and displays at each iteration')
-        parser.add_argument('--tf_log', action='store_true', help='if specified, use tensorboard logging. Requires tensorflow installed')
+        parser.add_argument('--no_log', action='store_true', help='if specified, use tensorboard logging. Requires tensorflow installed')
         # for training
         parser.add_argument('--continue_train', action='store_true', help='continue training: load the latest model')
         parser.add_argument('--which_epoch', type=str, default='latest', help='which epoch to load? set to latest to use latest cached model')
@@ -47,7 +47,7 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--lambda_content', type=float, default=0.25, help='weight for the VGG19 content loss')
         parser.add_argument('--lambda_step', type=float, default=2.0, help='weight for generation loss')
         parser.add_argument('--lambda_g', type=float, default=2.0, help='weight for generation loss')
-        parser.add_argument('--t_s_ratio', type=float, default=0.5, help='loss ratio between dual tasks')
+        parser.add_argument('--t_s_ratio', type=float, default=0.8, help='loss ratio between dual tasks')
 
         self.isTrain = True
         return parser

@@ -38,20 +38,29 @@ def get_option_setter(dataset_name):
     return dataset_class.modify_commandline_options
 
 
-def create_dataloader(opt, valid = False):
+def create_dataloader(opt, is_inference):
     dataset = find_dataset_using_name(opt.dataset_mode)
     instance = dataset()
-    instance.initialize(opt)
-    print("dataset [%s] of size %d was created" %
-          (type(instance).__name__, len(instance)))
+    instance.initialize(opt, is_inference)
+
+    phase = 'val' if is_inference else 'training'
+    print(f"{phase} dataset [{type(instance).__name__}] of size {len(instance)} was created")
+
+    batch_size = 5 if is_inference else opt.batchSize
     dataloader = torch.utils.data.DataLoader(
         instance,
-        batch_size=opt.batchSize,
-        sampler=data_sampler(instance, shuffle=opt.isTrain, distributed=True),
-        drop_last=opt.isTrain,
+        batch_size=batch_size,
+        sampler=data_sampler(instance, shuffle=not is_inference, distributed=True),
+        drop_last=not is_inference,
         num_workers= opt.num_workers ,
     )
     return dataloader
+
+def get_train_val_dataloader(opt):
+    val_dataset = create_dataloader(opt, is_inference=True)
+    train_dataset = create_dataloader(opt, is_inference=False)
+    return val_dataset, train_dataset
+
 def data_sampler(dataset, shuffle, distributed):
     if distributed:
         return torch.utils.data.distributed.DistributedSampler(dataset, shuffle=shuffle)

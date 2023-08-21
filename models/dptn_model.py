@@ -27,19 +27,16 @@ class DPTNModel(nn.Module) :
             self.GANloss = loss.GANLoss(opt.gan_mode).cuda()
             self.L1loss = torch.nn.L1Loss()
             self.Vggloss = loss.VGGLoss().cuda()
-            self.CE = torch.nn.NLLLoss()
             self.Faceloss = PerceptualLoss(network= 'vgg19',
                                            layers= ['relu_1_1', 'relu_2_1', 'relu_3_1', 'relu_4_1', 'relu_5_1'],
                                            num_scales=1,
                                            ).cuda()
-
-
     def forward(self, data, mode):
         src_image, src_map, src_face, tgt_image, tgt_map, tgt_face = self.preprocess_input(data)
         if mode == 'generator':
-            g_loss, fake_t, fake_s = self.compute_generator_loss(src_image, src_map, src_face,
-                                                                 tgt_image, tgt_map, tgt_face)
-            return g_loss, (fake_t, fake_s)
+            g_loss, sample = self.compute_generator_loss(src_image, src_map, src_face,
+                                                         tgt_image, tgt_map, tgt_face)
+            return g_loss, sample
         elif mode == 'discriminator':
             d_loss = self.compute_discriminator_loss(src_image, src_map,
                                                      tgt_image, tgt_map)
@@ -47,10 +44,13 @@ class DPTNModel(nn.Module) :
         elif mode == 'inference' :
             self.netG.eval()
             with torch.no_grad():
-                (gt_tgts, gt_srcs), (fake_tgts, fake_srcs), (vis_tgt, vis_src) = self.generate_fake(src_image, src_map,
-                                                                tgt_image,  tgt_map,
-                                                                False)
-            return (fake_tgts, fake_srcs), (vis_tgt, vis_src)
+                src_fake, tgt_fake = self.netG(src_image, src_map, tgt_map)
+
+            sample_src = torch.cat([src_image.cpu(), src_map[:, :3].cpu(), src_fake.cpu(), src_image.cpu()], 3)
+            sample_tgt = torch.cat([src_image.cpu(), tgt_map[:, :3].cpu(), tgt_fake.cpu(), tgt_image.cpu()], 3)
+            sample = torch.cat([sample_src, sample_tgt], 2)
+
+            return sample
     def create_optimizers(self, opt):
         G_params = list(self.netG.parameters())
         D_params = list(self.netD.parameters())
@@ -92,33 +92,24 @@ class DPTNModel(nn.Module) :
         return netG, netD
     def preprocess_input(self, data):
         if self.use_gpu():
-            # data['src_image'] = data['src_image'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            # data['src_map'] = data['src_map'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            # data['tgt_image'] = data['tgt_image'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            # data['tgt_map'] = data['tgt_map'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            # data['canonical_image'] = data['canonical_image'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            # data['canonical_map'] = data['canonical_map'].to(f'cuda:{self.opt.gpu_ids[0]}')
-            data['src_image'] = data['src_image'].float().cuda()
-            data['src_map'] = data['src_map'].float().cuda()
-            data['src_face'] = data['src_face'].float().cuda()
-            data['tgt_image'] = data['tgt_image'].float().cuda()
-            data['tgt_map'] = data['tgt_map'].float().cuda()
-            data['tgt_face'] = data['tgt_face'].float().cuda()
+            source_image_, target_image_ = data['source_image'].cuda(), data['target_image'].cuda()
+            source_skeleton_, target_skeleton_ = data['source_skeleton'].cuda(), data['target_skeleton'].cuda()
+            source_face_, target_face_ = data['source_face_center'].cuda(), data['target_face_center'].cuda()
 
+        Is = torch.cat((source_image_, target_image_), 0)
+        Bs = torch.cat((source_skeleton_, target_skeleton_), 0)
+        Fs = torch.cat((source_face_, target_face_), 0)
+        It = torch.cat((target_image_, source_image_), 0)
+        Bt = torch.cat((target_skeleton_, source_skeleton_), 0)
+        Ft = torch.cat((target_face_, source_face_), 0)
 
-        return data['src_image'], data['src_map'], data['src_face'], data['tgt_image'], data['tgt_map'], data['tgt_face']
-        # return data['canonical_image'], data['canonical_map'], data['tgt_image'], data['tgt_map'], data['canonical_image'], data['canonical_map']
+        return Is, Bs, Fs, It, Bt, Ft
 
     def backward_G_basic(self, fake_image, target_image, face, use_d):
         # Calculate reconstruction loss
         # Calculate GAN loss
         loss_ad_gen = None
         loss_step = None
-
-        fake_image = torch.cat(fake_image, 0)
-        target_image = torch.cat(target_image, 0)
-        face = torch.cat([face for _ in range(self.opt.step_size)], 0)
-        step_true = torch.tensor([i for i in range(self.opt.step_size) for _ in range(self.opt.batchSize)]).long().to(face.device)
 
         loss_app_gen = self.L1loss(fake_image, target_image) * self.opt.lambda_rec
         cont, style = self.Vggloss(fake_image, target_image)
@@ -128,73 +119,61 @@ class DPTNModel(nn.Module) :
             util.crop_face_from_output(fake_image, face),
             util.crop_face_from_output(target_image, face))
         if use_d:
-            D_fake, step_pred = self.netD(fake_image)
-            loss_step = self.CE(step_pred, step_true)
+            D_fake = self.netD(fake_image)
             loss_ad_gen = self.GANloss(D_fake, True, False) * self.opt.lambda_g
 
 
 
-        return loss_app_gen, loss_ad_gen, loss_style_gen, loss_content_gen, loss_face, loss_step
+        return loss_app_gen, loss_ad_gen, loss_style_gen, loss_content_gen, loss_face
     def compute_generator_loss(self,
                                src_image, src_map, src_face,
                                tgt_image, tgt_map, tgt_face):
-
-        G_losses = defaultdict(int)
-
-        (gt_tgts, gt_srcs), (fake_tgts, fake_srcs), (vis_tgt, vis_src) = self.generate_fake(src_image, src_map,
-                                                        tgt_image, tgt_map,
-                                                        self.opt.isTrain)
-
-        loss_app_gen_t, loss_ad_gen_t, loss_style_gen_t, loss_content_gen_t, loss_face_t, loss_step = self.backward_G_basic(fake_tgts, gt_tgts, tgt_face, use_d=True)
-        loss_app_gen_s, _, loss_style_gen_s, loss_content_gen_s, loss_face_s, _ = self.backward_G_basic(fake_srcs, gt_srcs, src_face, use_d=False)
+        self.netG.train()
         self.netD.train()
+        G_losses = defaultdict(int)
+        src_fake, tgt_fake = self.netG(src_image, src_map, tgt_map)
+
+        loss_app_gen_t, loss_ad_gen_t, loss_style_gen_t, loss_content_gen_t, loss_face_t = self.backward_G_basic(tgt_fake, tgt_image, tgt_face, use_d=True)
+        loss_app_gen_s, _, loss_style_gen_s, loss_content_gen_s, loss_face_s = self.backward_G_basic(src_fake, src_image, src_face, use_d=False)
         G_losses['L1_target'] = self.opt.t_s_ratio * loss_app_gen_t
         G_losses['GAN_target'] = loss_ad_gen_t * 0.5
         G_losses['VGG_target'] =  self.opt.t_s_ratio * (loss_style_gen_t + loss_content_gen_t)
         G_losses['Face_target'] = loss_face_t
-        G_losses['Step_loss'] = loss_step * self.opt.lambda_step * 0.5
         G_losses['L1_source'] = (1-self.opt.t_s_ratio) * loss_app_gen_s
         G_losses['VGG_source'] = (1-self.opt.t_s_ratio) * (loss_style_gen_s + loss_content_gen_s)
         G_losses['Face_source'] = loss_face_s
 
-        return G_losses, vis_tgt, vis_src
-    def backward_D_basic(self, real, fake):
-        b, c, h, w = real.size()
-        step_true = torch.tensor([i for i in range(self.opt.step_size) for _ in range(self.opt.batchSize)]).long().to(real.device)
+        sample_src = torch.cat([src_image.cpu(), src_map[:, :3].cpu(), src_fake.detach().cpu(), src_image.cpu()], 3)
+        sample_tgt = torch.cat([src_image.cpu(), tgt_map[:, :3].cpu(), tgt_fake.detach().cpu(), tgt_image.cpu()], 3)
+        sample = torch.cat([sample_src, sample_tgt], 2)
 
+        return G_losses, sample
+    def backward_D_basic(self, real, fake):
         # Real
-        D_real, step_pred_true = self.netD(real)
+        D_real = self.netD(real)
         D_real_loss = self.GANloss(D_real, True, True)
-        real_step = self.CE(step_pred_true, step_true) * self.opt.lambda_step
         # fake
-        D_fake, step_pred_fake = self.netD(fake.detach())
+        D_fake = self.netD(fake.detach())
         D_fake_loss = self.GANloss(D_fake, False, True)
-        fake_step = self.CE(step_pred_fake, step_true) * self.opt.lambda_step
 
         # gradient penalty for wgan-gp
         gradient_penalty = 0
         if self.opt.gan_mode == 'wgangp':
             gradient_penalty, gradients = loss.cal_gradient_penalty(self.netD, real, fake.detach())
 
-        return D_real_loss, real_step, D_fake_loss, fake_step, gradient_penalty
+        return D_real_loss, D_fake_loss, gradient_penalty
     def compute_discriminator_loss(self,
                                    src_image, src_map,
                                    tgt_image, tgt_map):
-
+        self.netG.train()
+        self.netD.train()
         D_losses = {}
         with torch.no_grad():
-            (gt_tgts, _), (fake_tgts, fake_srcs), _ = self.generate_fake(src_image, src_map, tgt_image, tgt_map)
+            _, tgt_fake = self.netG(src_image, src_map, tgt_map)
 
-            fake_image_t = torch.cat(fake_tgts, 0).detach()
-            fake_image_t.requires_grad_()
-
-        self.netG.train()
-        gt_tgts = torch.cat(gt_tgts, 0)
-        D_real_loss, real_step, D_fake_loss, fake_step, gradient_penalty = self.backward_D_basic(gt_tgts, fake_image_t)
+        D_real_loss, D_fake_loss, gradient_penalty = self.backward_D_basic(tgt_image, tgt_fake)
         D_losses['Real_loss'] = D_real_loss * 0.5
-        D_losses['Real_step'] = real_step * 0.5
         D_losses['Fake_loss'] = D_fake_loss * 0.5
-        D_losses['Fake_step'] = fake_step * 0.5
         if self.opt.gan_mode == 'wgangp':
             D_losses['WGAN_penalty'] = gradient_penalty
 

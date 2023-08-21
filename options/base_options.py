@@ -29,7 +29,7 @@ class BaseOptions():
         # input/output sizes
         parser.add_argument('--batchSize', type=int, default=69, help='input batch size')
         parser.add_argument('--image_nc', type=int, default=3, help='# of input image channels.')
-        parser.add_argument('--pose_nc', type=int, default=41, help='# of input pose channels. keypoint channel + limb channel')
+        parser.add_argument('--pose_nc', type=int, default=20, help='# of input pose channels. keypoint channel + limb channel')
         parser.add_argument('--output_nc', type=int, default=3, help='# of output image channels')
         parser.add_argument('--crop_size', type=int, default=256, help='Crop to the width of crop_size (after initially scaling the images to load_size.)')
         # for setting inputs

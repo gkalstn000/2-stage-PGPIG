@@ -66,8 +66,8 @@ class ResBlock(nn.Module):
     Define a Residual block for different types
     """
 
-    def __init__(self, input_nc, output_nc, hidden_nc=None, norm_layer=nn.BatchNorm2d, nonlinearity=nn.LeakyReLU(),
-                 sample_type='none', use_spect=False, use_coord=False):
+    def __init__(self, input_nc, output_nc, norm_layer=nn.BatchNorm2d, nonlinearity=nn.LeakyReLU(),
+                 use_spect=False, use_coord=False, sample_type='none', hidden_nc=None):
         super(ResBlock, self).__init__()
 
         hidden_nc = output_nc if hidden_nc is None else hidden_nc
