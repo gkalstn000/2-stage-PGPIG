@@ -34,6 +34,7 @@ class SpadeAttnEncoder(BaseNetwork) :
             setattr(self, 'mblock' + str(i), block)
 
         self.down = nn.MaxPool2d(2, stride=2)
+
     def forward(self, x, texture_information):
         x = self.head_0(x, texture_information)
         x = self.down(x)
@@ -155,35 +156,39 @@ class DefaultEncoder(BaseNetwork):
         nonlinearity = modules.get_nonlinearity_layer(activation_type=opt.activation)
         input_nc = 1 * opt.pose_nc + opt.image_nc
 
-        self.block0 = modules.EncoderBlockOptimized(input_nc, opt.ngf, norm_layer,
-                                                    nonlinearity, opt.use_spect_g, opt.use_coord)
-        self.mult = 1
-        for i in range(self.layers - 1):
-            mult_prev = self.mult
-            self.mult = min(2 ** (i + 1), opt.img_f // opt.ngf)
-            block = modules.EncoderBlock(opt.ngf * mult_prev, opt.ngf * self.mult, norm_layer,
-                                         nonlinearity, opt.use_spect_g, opt.use_coord)
-            setattr(self, 'encoder' + str(i), block)
+        self.enc_block0 = modules.EncoderBlockOptimized(input_nc, opt.ngf, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
+        self.enc_block1 = modules.EncoderBlock(opt.ngf * 1, opt.ngf * 2, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
+        self.enc_block2 = modules.EncoderBlock(opt.ngf * 2, opt.ngf * 4, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
+        self.res_block1 = modules.ResBlock(opt.ngf * 4, opt.ngf * 4, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
+        self.res_block2 = modules.ResBlock(opt.ngf * 4, opt.ngf * 4, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
+        self.res_block3 = modules.ResBlock(opt.ngf * 4, opt.ngf * 4, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
 
-        # ResBlocks
-        for i in range(opt.num_blocks):
-            block = modules.ResBlock(opt.ngf * self.mult, opt.ngf * self.mult, norm_layer=norm_layer,
-                                     nonlinearity=nonlinearity, use_spect=opt.use_spect_g, use_coord=opt.use_coord)
-            setattr(self, 'mblock' + str(i), block)
+        self.t_block0  = nn.Sequential(nn.Linear(256, opt.ngf * 2),
+                                       nn.SiLU(),
+                                       nn.Linear(opt.ngf * 2, opt.ngf * 2),
+                                       )
 
-    def forward(self, bone2, img2, texture_information = None):
-        x = torch.cat([img2, bone2], 1)
-        # Source-to-source Encoder
-        x = self.block0(x) # (B, C, H, W) -> (B, ngf, H/2, W/2)
-        for i in range(self.layers - 1):
-            model = getattr(self, 'encoder' + str(i))
-            x = model(x)
-        # input_ size : (B, ngf * 2^2, H/2^layers, C/2^layers)
-        # Source-to-source Resblocks
-        for i in range(self.opt.num_blocks):
-            model = getattr(self, 'mblock' + str(i))
-            x = model(x)
-        return x
+        self.t_block1 = nn.Sequential(nn.Linear(256, opt.ngf * 4),
+                                      nn.SiLU(),
+                                      nn.Linear(opt.ngf * 4, opt.ngf * 4),
+                                      )
+        self.t_block2 = nn.Sequential(nn.Linear(256, opt.ngf * 8),
+                                      nn.SiLU(),
+                                      nn.Linear(opt.ngf * 8, opt.ngf * 8),
+                                      )
+    def forward(self, image, bone, time_emb):
+        x = torch.cat([image, bone], 1)
+        out = self.enc_block0(x)
+        out = self.apply_conditions(out, self.t_block0(time_emb))
+        out = self.enc_block1(out)
+        out = self.apply_conditions(out, self.t_block1(time_emb))
+        out = self.enc_block2(out)
+        out = self.apply_conditions(out, self.t_block2(time_emb))
+        out = self.res_block1(out)
+        out = self.res_block2(out)
+        out = self.res_block3(out)
+
+        return out
 class SourceEncoder(nn.Module):
     """
     Source Image Encoder (En_s)

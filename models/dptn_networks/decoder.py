@@ -44,20 +44,35 @@ class DefaultDecoder(BaseNetwork):
         super(DefaultDecoder, self).__init__()
         self.opt = opt
         self.layers = opt.layers_g
-        mult = opt.mult
+        mult = 4
         norm_layer = modules.get_norm_layer(norm_type=opt.norm)
         nonlinearity = modules.get_nonlinearity_layer(activation_type=opt.activation)
 
-        for i in range(self.layers):
-            mult_prev = mult
-            mult = min(2 ** (self.layers - i - 2), opt.img_f // opt.ngf) if i != self.layers - 1 else 1
-            up = modules.ResBlockDecoder(opt.ngf * mult_prev, opt.ngf * mult, opt.ngf * mult, norm_layer,
-                                 nonlinearity, opt.use_spect_g, opt.use_coord)
-            setattr(self, 'decoder' + str(i), up)
+        self.res_block1 = modules.ResBlockDecoder(opt.ngf * 4, opt.ngf * 2, opt.ngf * mult, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
+        self.res_block2 = modules.ResBlockDecoder(opt.ngf * 2, opt.ngf * 1, opt.ngf * mult, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
+        self.res_block3 = modules.ResBlockDecoder(opt.ngf * 1, opt.ngf * 1, opt.ngf * mult, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
+        self.t_block0  = nn.Sequential(nn.Linear(256, opt.ngf * 4),
+                                       nn.SiLU(),
+                                       nn.Linear(opt.ngf * 4, opt.ngf * 4),
+                                       )
+
+        self.t_block1 = nn.Sequential(nn.Linear(256, opt.ngf * 2),
+                                      nn.SiLU(),
+                                      nn.Linear(opt.ngf * 2, opt.ngf * 2),
+                                      )
+        self.t_block2 = nn.Sequential(nn.Linear(256, opt.ngf * 2),
+                                      nn.SiLU(),
+                                      nn.Linear(opt.ngf * 2, opt.ngf * 2),
+                                      )
+
+
         self.outconv = modules.Output(opt.ngf, opt.output_nc, 3, None, nonlinearity, opt.use_spect_g, opt.use_coord)
-    def forward(self, x, texture_information):
-        for i in range(self.layers):
-            model = getattr(self, 'decoder' + str(i))
-            x = model(x)
-        out = self.outconv(x)
+    def forward(self, x, time_emb):
+        out = self.res_block1(x)
+        out = self.apply_conditions(out, self.t_block0(time_emb))
+        out = self.res_block2(out)
+        out = self.apply_conditions(out, self.t_block1(time_emb))
+        out = self.res_block3(out)
+        out = self.apply_conditions(out, self.t_block2(time_emb))
+        out = self.outconv(out)
         return out

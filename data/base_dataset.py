@@ -9,8 +9,11 @@ import torch
 
 import numpy as np
 from PIL import Image
+from io import BytesIO
 
 import random
+
+
 import json
 import util.util as util
 import os
@@ -23,88 +26,54 @@ class BaseDataset(data.Dataset):
     def modify_commandline_options(parser, is_train):
         return parser
 
-    def initialize(self, opt):
+    def initialize(self, opt, is_inference):
         pass
 
-    def obtain_bone(self, name):
-        y, x = self.annotation_file.loc[name]
-        coord = util.make_coord_array(y, x)
-        return self.obtain_bone_with_coord(coord)
-    def obtain_bone_with_coord(self, coord):
-        # Keypoint map
-        keypoint = util.cords_to_map(coord, self.opt)
-        keypoint = torch.Tensor(keypoint)
-        # Limb map
-        limb = util.limbs_to_map(coord, self.opt)
-        limb = torch.Tensor(limb)
-
-        return torch.cat([keypoint, limb])
-
-    def obtain_face_center(self, name):
-        load_size = self.opt.load_size
-        old_size = self.opt.old_size
-
-        y, x = self.annotation_file.loc[name]
-        keypoint = util.make_coord_array(y, x)
-        if int(keypoint[14, 0]) != -1 and int(keypoint[15, 0]) != -1:
-            y0, x0 = keypoint[14, 0:2] / old_size * load_size
-            y1, x1 = keypoint[15, 0:2] / old_size * load_size
-            face_center = torch.tensor([y0, x0, y1, x1]).float()
-        else:
-            face_center = torch.tensor([-1, -1, -1, -1]).float()
-
-        return face_center
+    def get_image_tensor(self, path):
+        with self.env.begin(write=False) as txn:
+            key = f'{path}'.encode('utf-8')
+            img_bytes = txn.get(key)
+        buffer = BytesIO(img_bytes)
+        img = Image.open(buffer)
+        param = get_random_params(img.size, self.scale_param)
+        trans = get_transform(param, normalize=True, toTensor=True)
+        img = trans(img)
+        return img, param
 
 
 
-def __resize(img, w, h, method=Image.BICUBIC):
-    return img.resize((w, h), method)
+
+def get_random_params(size, scale_param):
+    w, h = size
+    scale = random.random() * scale_param
+
+    new_w = int( w * (1.0+scale) )
+    new_h = int( h * (1.0+scale) )
+    x = random.randint(0, np.maximum(0, new_w - w))
+    y = random.randint(0, np.maximum(0, new_h - h))
+    return {'crop_param': (x, y, w, h), 'scale_size':(new_h, new_w)}
 
 
-def __make_power_2(img, base, method=Image.BICUBIC):
-    ow, oh = img.size
-    h = int(round(oh / base) * base)
-    w = int(round(ow / base) * base)
-    if (h == oh) and (w == ow):
-        return img
-    return img.resize((w, h), method)
+def get_transform(param, method=Image.BICUBIC, normalize=True, toTensor=True):
+    transform_list = []
+    if 'scale_size' in param and param['scale_size'] is not None:
+        osize = param['scale_size']
+        transform_list.append(transforms.Resize(osize, interpolation=method))
 
+    if 'crop_param' in param and param['crop_param'] is not None:
+        transform_list.append(transforms.Lambda(lambda img: __crop(img, param['crop_param'])))
 
-def __scale_width(img, target_width, method=Image.BICUBIC):
-    ow, oh = img.size
-    if (ow == target_width):
-        return img
-    w = target_width
-    h = int(target_width * oh / ow)
-    return img.resize((w, h), method)
+    if toTensor:
+        transform_list += [transforms.ToTensor()]
 
+    if normalize:
+        transform_list += [transforms.Normalize((0.5, 0.5, 0.5),
+                                                (0.5, 0.5, 0.5))]
+    return transforms.Compose(transform_list)
 
-def __scale_shortside(img, target_width, method=Image.BICUBIC):
-    ow, oh = img.size
-    ss, ls = min(ow, oh), max(ow, oh)  # shortside and longside
-    width_is_shorter = ow == ss
-    if (ss == target_width):
-        return img
-    ls = int(target_width * ls / ss)
-    nw, nh = (ss, ls) if width_is_shorter else (ls, ss)
-    return img.resize((nw, nh), method)
-
-
-def __crop(img, pos, size):
-    ow, oh = img.size
-    x1, y1 = pos
-    tw = th = size
+def __crop(img, pos):
+    x1, y1, tw, th = pos
     return img.crop((x1, y1, x1 + tw, y1 + th))
 
-
-def __flip(img, flip):
-    if flip:
-        return img.transpose(Image.FLIP_LEFT_RIGHT)
-    return img
-
-
-def print_gray(path, moduler) :
-    img_gray = Image.open(path).convert('L')
-    img_array = np.array(img_gray)
-    img_clip = img_array // moduler * moduler
-    util.print_PILimg(Image.fromarray(img_clip))
+def normalize():
+    return transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))

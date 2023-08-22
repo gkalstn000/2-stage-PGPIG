@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 from options.train_options import TrainOptions
 
-from trainers.trainer import Trainer, get_valid_bone_tensors
+from trainers.trainer import Trainer
 from util.iter_counter import IterationCounter
 from util.visualizer import Visualizer
 
@@ -30,22 +30,17 @@ opt.benchmark = True
 init_distributed()
 
 # load the dataset
-dataloader = data.create_dataloader(opt)
-
-# Validation Setting
-opt.phase = 'test'
-dataloader_val = data.create_dataloader(opt, valid = True)
-opt.phase = 'train'
+val_dataset, train_dataset = data.get_train_val_dataloader(opt)
 
 # create trainer for our model
 trainer = Trainer(opt)
 
-iter_counter = IterationCounter(opt, len(dataloader))
+iter_counter = IterationCounter(opt, len(train_dataset))
 visualizer = Visualizer(opt)
 
 for epoch in iter_counter.training_epochs():
     iter_counter.record_epoch_start(epoch)
-    for i, data_i in enumerate(tqdm(dataloader), start=iter_counter.epoch_iter):
+    for i, data_i in enumerate(tqdm(train_dataset), start=iter_counter.epoch_iter):
         iter_counter.record_one_iteration()
         start = time.time()
         # Training
@@ -61,15 +56,13 @@ for epoch in iter_counter.training_epochs():
             losses = trainer.get_latest_losses()
             visualizer.print_current_errors(epoch, iter_counter.epoch_iter,
                                             losses, iter_counter.time_per_iter)
+            losses['time/epoch'] = epoch
+            losses['time/iter'] = iter_counter.time_per_iter
             visualizer.plot_current_errors(losses, iter_counter.total_steps_so_far)
 
         if iter_counter.needs_displaying():
-            fake_image_t, fake_image_s = trainer.get_latest_generated()
-            visuals = OrderedDict([('train_source', fake_image_s),
-                                   ('train_target', fake_image_t),
-                                   # ('train_4bone', data_i['B2']),
-                                   ])
-            visualizer.display_current_results(visuals, epoch, iter_counter.total_steps_so_far)
+            sample = trainer.get_latest_generated()
+            visualizer.display_current_results({'Train vis': sample}, epoch, iter_counter.total_steps_so_far)
 
         if iter_counter.needs_saving():
             print('saving the latest model (epoch %d, total_steps %d)' %
@@ -78,18 +71,9 @@ for epoch in iter_counter.training_epochs():
             iter_counter.record_current_iter()
         # break
 
-    for i, data_i in tqdm(enumerate(dataloader_val), desc='Validation images generating') :
-        _, (fake_image_t, fake_image_s) = trainer.model(data_i, mode='inference')
-
-        # bone_test = get_valid_bone_tensors(dataloader_val, trainer.model.module, data_i['P1'][0].cuda(), data_i['B2'][0].cuda())
-        visuals = OrderedDict([('valid_source', fake_image_s),
-                               ('valid_target', fake_image_t),
-
-                               # ('valid_4bone', data_i['B2']),
-                               # ('valid_b_test', bone_test)
-                               ])
-
-        visualizer.display_current_results(visuals, epoch, iter_counter.total_steps_so_far)
+    for i, data_i in tqdm(enumerate(val_dataset), desc='Validation images generating') :
+        sample = trainer.model(data_i, mode='inference')
+        visualizer.display_current_results({'Valid vis': sample}, epoch, iter_counter.total_steps_so_far)
         break
 
     trainer.update_learning_rate(epoch)
@@ -103,4 +87,3 @@ for epoch in iter_counter.training_epochs():
         trainer.save(epoch)
 
 print('Training was successfully finished.')
-

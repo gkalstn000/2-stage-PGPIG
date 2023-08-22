@@ -41,15 +41,15 @@ class ResDiscriminator(BaseNetwork):
             block = modules.ResBlockEncoder(ndf*mult_prev, ndf*mult, ndf*mult_prev, norm_layer, nonlinearity, opt.use_spect_d, use_coord)
             setattr(self, 'encoder' + str(i), block)
         self.conv = SpectralNorm(nn.Conv2d(ndf*mult, 1, 1))
-        self.fc_step = nn.Sequential(nn.Linear(ndf*mult * 16 * 16, 256),
+        self.fc_step = nn.Sequential(nn.Linear(ndf*mult * 16 * 11, 256),
                                      nn.ReLU(),
-                                     nn.Linear(256, opt.step_size),
+                                     nn.Linear(256, opt.step_size+1),
                                      )
     def forward(self, x):
         out = self.block0(x)
         for i in range(self.layers - 1):
             model = getattr(self, 'encoder' + str(i))
-            out = model(out) # (B, 128, 16, 16)
+            out = model(out) # (B, 128, 16, 11)
         b, c, h, w = out.size()
         step = self.fc_step(out.view(b, -1))
         pred = self.conv(self.nonlinearity(out))

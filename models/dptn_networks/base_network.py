@@ -2,7 +2,7 @@
 Copyright (C) 2019 NVIDIA Corporation.  All rights reserved.
 Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode).
 """
-
+import torch
 import torch.nn as nn
 from torch.nn import init
 
@@ -63,3 +63,21 @@ class BaseNetwork(nn.Module):
         # sh = round(sw / opt.aspect_ratio)
         sh = sw
         return sw, sh
+
+    def apply_conditions(self, h, emb=None):
+        """
+        apply conditions on the feature maps
+
+        Args:
+            emb: time conditional (ready to scale + shift)
+            cond: encoder's conditional (read to scale + shift)
+        """
+
+        while len(emb.shape) < len(h.shape):
+            emb = emb[..., None]
+
+        scale, shift = torch.chunk(emb, 2, dim=1)
+        h = h * (1 + scale)
+        h = h + shift
+
+        return h

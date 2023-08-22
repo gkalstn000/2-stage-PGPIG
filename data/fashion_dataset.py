@@ -6,105 +6,196 @@ import pandas as pd
 import torchvision.transforms.functional as F
 import torchvision.transforms as transforms
 import torch
+import lmdb
 
 from tqdm import tqdm, trange
 import numpy as np
 import time
-
-
+import math
+import cv2
 class FashionDataset(BaseDataset) :
 
     @staticmethod
     def modify_commandline_options(parser, is_train) :
         parser.set_defaults(preprocess_mode='resize_and_crop')
-        parser.set_defaults(load_size=(256, 256))
+        parser.set_defaults(load_size=(256, 176))
         parser.set_defaults(old_size=(256, 176))
         parser.set_defaults(image_nc=3)
+        parser.set_defaults(scale_param=0.1)
         # parser.add_argument(pose_nc=41)
-        parser.set_defaults(display_winsize=256)
-        parser.set_defaults(crop_size=256)
         return parser
 
-    def initialize(self, opt):
+    def initialize(self, opt, is_inference):
         self.opt = opt
-        self.phase = opt.phase
-        self.image_dir, self.bone_file, self.name_pairs = self.get_paths(opt)
-        size = len(self.name_pairs)
-        self.dataset_size = size
+        self.is_inference = is_inference
+        self.resolution = 'lowers'
+        path = os.path.join(opt.dataroot, f'{self.resolution}_lmdb')
+        self.env = lmdb.open(
+            path,
+            max_readers=32,
+            readonly=True,
+            lock=False,
+            readahead=False,
+            meminit=False,
+        )
 
-        if isinstance(opt.load_size, int):
-            self.load_size = (opt.load_size, opt.load_size)
-        else:
-            self.load_size = opt.load_size
+        if not self.env:
+            raise IOError('Cannot open lmdb dataset', path)
+
+        self.pairList = 'train_pairs.txt' if not is_inference else 'test_pairs.txt'
+        self.data = self.get_paths(opt.dataroot)
+        self.preprocess_mode = opt.preprocess_mode
+        self.scale_param = opt.scale_param if not is_inference else 0
+        self.limbSeq = [[2, 3], [2, 6], [3, 4], [4, 5], [6, 7], [7, 8], [2, 9], [9, 10], \
+                [10, 11], [2, 12], [12, 13], [13, 14], [2, 1], [1, 15], [15, 17], \
+                [1, 16], [16, 18], [3, 17], [6, 18]]
+
+        self.colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0], [255, 255, 0], [170, 255, 0], [85, 255, 0], [0, 255, 0], \
+                [0, 255, 85], [0, 255, 170], [0, 255, 255], [0, 170, 255], [0, 85, 255], [0, 0, 255], [85, 0, 255], \
+                [170, 0, 255], [255, 0, 255], [255, 0, 170], [255, 0, 85]]
 
 
-        # transform_list.append(transforms.Resize(size=self.load_size))
-        self.annotation_file = pd.read_csv(self.bone_file, sep=':').set_index('name')
+    def get_paths(self, root):
+        fd = open(os.path.join(root, self.pairList))
+        lines = fd.readlines()
+        fd.close()
 
-        transform_list=[]
-        # transform_list.append(transforms.Resize(size=self.load_size))
-        transform_list.append(transforms.ToTensor())
-        transform_list.append(transforms.Normalize((0.5, 0.5, 0.5),(0.5, 0.5, 0.5)))
-        self.trans = transforms.Compose(transform_list)
+        image_paths = []
+        for item in lines:
+            dict_item={}
+            item = item.strip().split(',')
+            dict_item['source_image'] = [path.replace('.jpg', '.png').replace('img', f'img_{self.resolution}') for path in item[1:]]
+            dict_item['source_label'] = [os.path.join(root, self.img_to_label(path)) for path in dict_item['source_image']]
+            dict_item['target_image'] = item[0].replace('.jpg', '.png').replace('img', f'img_{self.resolution}')
+            dict_item['target_label'] = os.path.join(root, self.img_to_label(dict_item['target_image']))
+            image_paths.append(dict_item)
+        return image_paths
 
-    def get_paths(self, opt):
-        root = opt.dataroot
-        pairLst = os.path.join(root, f'fashion-pairs-{self.phase}.csv')
-        name_pairs = self.init_categories(pairLst)
+    def img_to_label(self, path):
+        return path.replace(f'img_{self.resolution}/', 'pose/').replace('.png', '.txt')
 
-        image_dir = os.path.join(root, f'{self.phase}_higher')
-        bonesLst = os.path.join(root, f'fashion-annotation-{self.phase}.csv')
-        return image_dir, bonesLst, name_pairs
 
-    def init_categories(self, pairLst):
-        pairs_file_train = pd.read_csv(pairLst)
-        size = len(pairs_file_train)
-        pairs = []
-        for i in trange(size, desc = 'Loading data pairs ...'):
-            pair = [pairs_file_train.iloc[i]['from'], pairs_file_train.iloc[i]['to']]
-            pairs.append(pair)
-
-        print('Loading data pairs finished ...')
-        return pairs
 
     def __getitem__(self, index):
-        P1_name, P2_name = self.name_pairs[index]
-        PC_name = f'{P1_name.replace(".jpg", "")}_2_{P2_name.replace(".jpg", "")}_vis.jpg'
+        path_item = self.data[index]
+        i = np.random.choice(list(range(0, len(path_item['source_image']))))
+        source_image_path = path_item['source_image'][i]
+        source_label_path = path_item['source_label'][i]
 
-        P1_path = os.path.join(self.image_dir, P1_name) # person 1
-        P2_path = os.path.join(self.image_dir, P2_name) # person 2
+        target_image_tensor, param = self.get_image_tensor(path_item['target_image'])
+        target_label_tensor, target_face_center = self.get_label_tensor(path_item['target_label'], target_image_tensor, param)
 
-        P1_img = Image.open(P1_path).convert('RGB')
-        P2_img = Image.open(P2_path).convert('RGB')
+        ref_tensor, param = self.get_image_tensor(source_image_path)
+        label_ref_tensor, ref_face_center = self.get_label_tensor(source_label_path, ref_tensor, param)
 
-        P1_img = F.resize(P1_img, self.load_size)
-        P2_img = F.resize(P2_img, self.load_size)
+        image_path = self.get_image_path(source_image_path, path_item['target_image'])
 
-        P1 = self.trans(P1_img)
-        P2 = self.trans(P2_img)
+        input_dict = {'target_skeleton': target_label_tensor,
+                      'target_image': target_image_tensor,
+                      'target_face_center': target_face_center,
 
-        B1 = self.obtain_bone(P1_name)
-        B2 = self.obtain_bone(P2_name)
+                      'source_image': ref_tensor,
+                      'source_skeleton': label_ref_tensor,
+                      'source_face_center': ref_face_center,
 
-        F1 = self.obtain_face_center(P1_name)
-        F2 = self.obtain_face_center(P2_name)
-
-        input_dict = {'src_image' : P1,
-                      'src_map': B1,
-                      'src_face': F1,
-                      'tgt_image': P2,
-                      'tgt_map': B2,
-                      'tgt_face': F2,
-                      'path': PC_name}
-
+                      'path': image_path,
+                      }
 
         return input_dict
 
+    def get_label_tensor(self, path, img, param):
+        canvas = np.zeros((img.shape[1], img.shape[2], 3)).astype(np.uint8)
+        keypoint = np.loadtxt(path)
+        keypoint = self.trans_keypoins(keypoint, param, img.shape[1:])
+        stickwidth = 4
+        for i in range(18):
+            x, y = keypoint[i, 0:2]
+            if x == -1 or y == -1:
+                continue
+            cv2.circle(canvas, (int(x), int(y)), 4, self.colors[i], thickness=-1)
+        joints = []
+        for i in range(17):
+            Y = keypoint[np.array(self.limbSeq[i]) - 1, 0]
+            X = keypoint[np.array(self.limbSeq[i]) - 1, 1]
+            cur_canvas = canvas.copy()
+            if -1 in Y or -1 in X:
+                joints.append(np.zeros_like(cur_canvas[:, :, 0]))
+                continue
+            mX = np.mean(X)
+            mY = np.mean(Y)
+            length = ((X[0] - X[1]) ** 2 + (Y[0] - Y[1]) ** 2) ** 0.5
+            angle = math.degrees(math.atan2(X[0] - X[1], Y[0] - Y[1]))
+            polygon = cv2.ellipse2Poly((int(mY), int(mX)), (int(length / 2), stickwidth), int(angle), 0, 360, 1)
+            cv2.fillConvexPoly(cur_canvas, polygon, self.colors[i])
+            canvas = cv2.addWeighted(canvas, 0.4, cur_canvas, 0.6, 0)
 
-    def postprocess(self, input_dict):
-        return input_dict
+            joint = np.zeros_like(cur_canvas[:, :, 0])
+            cv2.fillConvexPoly(joint, polygon, 255)
+            joint = cv2.addWeighted(joint, 0.4, joint, 0.6, 0)
+            joints.append(joint)
+        pose = F.to_tensor(Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)))
+
+        tensors_dist = 0
+        e = 1
+        for i in range(len(joints)):
+            im_dist = cv2.distanceTransform(255 - joints[i], cv2.DIST_L1, 3)
+            im_dist = np.clip((im_dist / 3), 0, 255).astype(np.uint8)
+            tensor_dist = F.to_tensor(Image.fromarray(im_dist))
+            tensors_dist = tensor_dist if e == 1 else torch.cat([tensors_dist, tensor_dist])
+            e += 1
+
+        label_tensor = torch.cat((pose, tensors_dist), dim=0)
+        if int(keypoint[14, 0]) != -1 and int(keypoint[15, 0]) != -1:
+            y0, x0 = keypoint[14, 0:2]
+            y1, x1 = keypoint[15, 0:2]
+            face_center = torch.tensor([y0, x0, y1, x1]).float()
+        else:
+            face_center = torch.tensor([-1, -1, -1, -1]).float()
+        return label_tensor, face_center
+
+    def trans_keypoins(self, keypoints, param, img_size):
+        missing_keypoint_index = keypoints == -1
+
+        # crop the white line in the original dataset
+        keypoints[:, 0] = (keypoints[:, 0] - 40)
+
+        # resize the dataset
+        img_h, img_w = img_size
+        scale_w = 1.0 / 176.0 * img_w
+        scale_h = 1.0 / 256.0 * img_h
+
+        if 'scale_size' in param and param['scale_size'] is not None:
+            new_h, new_w = param['scale_size']
+            scale_w = scale_w / img_w * new_w
+            scale_h = scale_h / img_h * new_h
+
+        if 'crop_param' in param and param['crop_param'] is not None:
+            w, h, _, _ = param['crop_param']
+        else:
+            w, h = 0, 0
+
+        keypoints[:, 0] = keypoints[:, 0] * scale_w - w
+        keypoints[:, 1] = keypoints[:, 1] * scale_h - h
+        keypoints[missing_keypoint_index] = -1
+        return keypoints
+
+    def get_image_path(self, source_name, target_name):
+        source_name = self.path_to_fashion_name(source_name)
+        target_name = self.path_to_fashion_name(target_name)
+        image_path = os.path.splitext(source_name)[0] + '_2_' + os.path.splitext(target_name)[0] + '_vis.png'
+        return image_path
+
+    def path_to_fashion_name(self, path_in):
+        path_in = path_in.split('img/')[-1]
+        path_in = os.path.join('fashion', path_in)
+        path_names = path_in.split('/')
+        path_names[3] = path_names[3].replace('_', '')
+        path_names[4] = path_names[4].split('_')[0] + "_" + "".join(path_names[4].split('_')[1:])
+        path_names = "".join(path_names)
+        return path_names
 
     def __len__(self):
-        return self.dataset_size
+        return len(self.data)
+
 
 
