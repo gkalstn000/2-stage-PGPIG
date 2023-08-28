@@ -653,10 +653,10 @@ if __name__ == "__main__":
     lpips_obj = LPIPS()
     rec = Reconstruction_Metrics()
 
-    exps = ['NTED', 'DPTN_higher_spade_dec', 'DPTN_higher']
-
-    real_path = '/datasets/msha/fashion/train_256'
-    gt_path = '/datasets/msha/fashion/test_256'
+    exps = ['DPTN_higher_spade']
+    root = '/datasets/msha/fashion'
+    real_path = os.path.join(root, 'train_256')
+    gt_path = os.path.join(root, 'test_256')
     for date in exps :
         distorated_path = f'./results/{date}'
 
