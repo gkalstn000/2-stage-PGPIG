@@ -163,27 +163,27 @@ class DefaultEncoder(BaseNetwork):
         self.res_block2 = modules.ResBlock(opt.ngf * 4, opt.ngf * 4, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
         self.res_block3 = modules.ResBlock(opt.ngf * 4, opt.ngf * 4, norm_layer, nonlinearity, opt.use_spect_g, opt.use_coord)
 
-        self.t_block0  = nn.Sequential(nn.Linear(256, opt.ngf * 2),
-                                       nn.SiLU(),
-                                       nn.Linear(opt.ngf * 2, opt.ngf * 2),
-                                       )
-
-        self.t_block1 = nn.Sequential(nn.Linear(256, opt.ngf * 4),
-                                      nn.SiLU(),
-                                      nn.Linear(opt.ngf * 4, opt.ngf * 4),
-                                      )
-        self.t_block2 = nn.Sequential(nn.Linear(256, opt.ngf * 8),
-                                      nn.SiLU(),
-                                      nn.Linear(opt.ngf * 8, opt.ngf * 8),
-                                      )
-    def forward(self, image, bone, time_emb):
+        # self.t_block0  = nn.Sequential(nn.Linear(256, opt.ngf * 2),
+        #                                nn.SiLU(),
+        #                                nn.Linear(opt.ngf * 2, opt.ngf * 2),
+        #                                )
+        #
+        # self.t_block1 = nn.Sequential(nn.Linear(256, opt.ngf * 4),
+        #                               nn.SiLU(),
+        #                               nn.Linear(opt.ngf * 4, opt.ngf * 4),
+        #                               )
+        # self.t_block2 = nn.Sequential(nn.Linear(256, opt.ngf * 8),
+        #                               nn.SiLU(),
+        #                               nn.Linear(opt.ngf * 8, opt.ngf * 8),
+        #                               )
+    def forward(self, image, bone):
         x = torch.cat([image, bone], 1)
         out = self.enc_block0(x)
-        out = self.apply_conditions(out, self.t_block0(time_emb))
+        # out = self.apply_conditions(out, self.t_block0(time_emb))
         out = self.enc_block1(out)
-        out = self.apply_conditions(out, self.t_block1(time_emb))
+        # out = self.apply_conditions(out, self.t_block1(time_emb))
         out = self.enc_block2(out)
-        out = self.apply_conditions(out, self.t_block2(time_emb))
+        # out = self.apply_conditions(out, self.t_block2(time_emb))
         out = self.res_block1(out)
         out = self.res_block2(out)
         out = self.res_block3(out)

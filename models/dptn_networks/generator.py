@@ -68,26 +68,26 @@ class DPTNGenerator(BaseNetwork):
                 ref_image, ref_map, ref_timestep,
                 input_image, input_map, input_timestep):
         b, c, h, w = ref_image.size()
-        ref_time_emb = timestep_embedding(ref_timestep).to(ref_image.device)
-        input_time_emb = timestep_embedding(input_timestep).to(ref_image.device)
+        ref_time_emb = timestep_embedding(ref_timestep).to(ref_image.device).view(b, 1, h, w)
+        input_time_emb = timestep_embedding(input_timestep).to(ref_image.device).view(b, 1, h, w)
         # Encode source-to-source
-        F_s_s = self.En_c(ref_image, ref_map, ref_time_emb)
+        F_s_s = self.En_c(ref_image+ref_time_emb, ref_map)
         # Encode source-to-target
-        F_s_t = self.En_c(input_image, input_map, input_time_emb)
+        F_s_t = self.En_c(input_image+input_time_emb, input_map)
 
         # Source Image Encoding
         F_s = self.En_s(ref_image)
         # Pose Transformer Module for Dual-task Correlation
         F_s_t, _, _ = self.PTM(F_s_s, F_s_t, F_s)
         # Source-to-source Decoder (only for training)
-        out_image_s = self.De(F_s_s, ref_time_emb)
+        out_image_s = self.De(F_s_s)
         # Source-to-target Decoder
-        out_image_t = self.De(F_s_t, ref_time_emb)
+        out_image_t = self.De(F_s_t)
 
         return out_image_t, out_image_s
 
 
-def timestep_embedding(timesteps, dim=256, max_period=1000):
+def timestep_embedding(timesteps, dim=256*176, max_period=1000):
     """
     Create sinusoidal timestep embeddings.
 

@@ -45,7 +45,7 @@ class BaseOptions():
 
         # for displays
         parser.add_argument('--display_winsize', type=int, default=400, help='display window size')
-        parser.add_argument('--step_size', type=int, default=10, help='# of step size')
+        parser.add_argument('--step_size', type=int, default=5, help='# of step size')
 
         # for generator
         parser.add_argument('--netG', type=str, default='dptn', help='selects model to use for netG (dptn | dualattn)')

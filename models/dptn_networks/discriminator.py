@@ -43,7 +43,7 @@ class ResDiscriminator(BaseNetwork):
         self.conv = SpectralNorm(nn.Conv2d(ndf*mult, 1, 1))
         self.fc_step = nn.Sequential(nn.Linear(ndf*mult * 16 * 11, 256),
                                      nn.ReLU(),
-                                     nn.Linear(256, opt.step_size+1),
+                                     nn.Linear(256, opt.step_size),
                                      )
     def forward(self, x):
         out = self.block0(x)

@@ -127,7 +127,7 @@ class DPTNModel(nn.Module) :
 
         if use_d:
             D_fake, step_pred = self.netD(fake_image)
-            loss_step = self.CE(step_pred, true_timestep.long().to(fake_image.device))
+            loss_step = self.CE(step_pred, true_timestep.long().to(fake_image.device)-1)
             loss_ad_gen = self.GANloss(D_fake, True, False) * self.opt.lambda_g
 
             loss_face = self.Faceloss(
@@ -168,7 +168,7 @@ class DPTNModel(nn.Module) :
 
         return G_losses, sample
     def backward_D_basic(self, real, fake, step_true):
-        step_true = step_true.long().to(real.device)
+        step_true = step_true.long().to(real.device) - 1
         # Real
         D_real, step_pred_true = self.netD(real)
         D_real_loss = self.GANloss(D_real, True, True)
