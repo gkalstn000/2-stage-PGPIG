@@ -13,6 +13,9 @@ interpolation_dict = {'bilinear' : Image.BILINEAR,
                       'nearest' : Image.NEAREST,
                       'bicubic' : Image.BICUBIC,
                       'area': None}
+
+
+
 class MetricDataset(data.Dataset) :
     def __init__(self, opt, gt_list, distorated_list):
         super(MetricDataset, self).__init__()

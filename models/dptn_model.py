@@ -17,7 +17,7 @@ class DPTNModel(nn.Module) :
     def __init__(self, opt):
         super(DPTNModel, self).__init__()
         self.opt = opt
-        self.min_size = (4, 4)
+        self.min_size = (8, 5)
         self.load_size = opt.load_size
         self.step_size = opt.step_size
 
@@ -54,7 +54,7 @@ class DPTNModel(nn.Module) :
         elif mode == 'inference' :
             self.netG.eval()
             with torch.no_grad():
-                sample = self.generate_fake(src_image, src_map, tgt_image,  tgt_map)
+                sample = self.generate_fake_valid(src_image, src_map, tgt_image,  tgt_map)
             return sample
     def create_optimizers(self, opt):
         G_params = list(self.netG.parameters())
@@ -120,7 +120,7 @@ class DPTNModel(nn.Module) :
         loss_step = None
         loss_face = None
 
-        loss_app_gen = self.L1loss(fake_image, target_image) * self.opt.lambda_rec
+        # loss_app_gen = self.L1loss(fake_image, target_image) * self.opt.lambda_rec
         cont, style = self.Vggloss(fake_image, target_image)
         loss_content_gen = cont * self.opt.lambda_content
         loss_style_gen = style * self.opt.lambda_style
@@ -134,7 +134,7 @@ class DPTNModel(nn.Module) :
                 util.crop_face_from_output(fake_image, face),
                 util.crop_face_from_output(target_image, face))
 
-        return loss_app_gen, loss_ad_gen, loss_style_gen, loss_content_gen, loss_face, loss_step
+        return loss_ad_gen, loss_style_gen, loss_content_gen, loss_face, loss_step
     def compute_generator_loss(self,
                                src_image, src_map, src_face,
                                tgt_image, tgt_map, tgt_face):
@@ -143,32 +143,22 @@ class DPTNModel(nn.Module) :
 
         G_losses = defaultdict(int)
 
-        b, c, h, w = src_image.size()
-        tgt_timestep = self.sample_timestep(b)
-        ref_timestep = self.sample_timestep(b, tgt_timestep)
-        fake_tgt, fake_src = self.generate_fake_one_step(src_image, src_map, ref_timestep,
-                                                         tgt_image, tgt_map, tgt_timestep)
+        (gt_tgt_batch, fake_tgt_batch, gt_src_batch, fake_src_batch, gt_step_batch), sample = \
+            self.generate_fake_train(src_image, src_map, tgt_image, tgt_map)
+        tgt_face_batch = tgt_face.tile((self.step_size, 1))
 
-        true_src = self.sample_image(src_image, ref_timestep)
-        true_tgt = self.sample_image(tgt_image, ref_timestep)
-
-        loss_app_gen_t, loss_ad_gen_t, loss_style_gen_t, loss_content_gen_t, loss_face_t, loss_step = self.backward_G_basic(fake_tgt, true_tgt, tgt_face, ref_timestep, use_d=True)
-        loss_app_gen_s, _, loss_style_gen_s, loss_content_gen_s, _, _ = self.backward_G_basic(fake_src, true_src, None, ref_timestep, use_d=False)
-        G_losses['L1_target'] = self.opt.t_s_ratio * loss_app_gen_t
+        loss_ad_gen_t, loss_style_gen_t, loss_content_gen_t, loss_face_t, loss_step = self.backward_G_basic(fake_tgt_batch, gt_tgt_batch, tgt_face_batch, gt_step_batch, use_d=True)
+        _, loss_style_gen_s, loss_content_gen_s, _, _ = self.backward_G_basic(fake_src_batch, gt_src_batch, None, None, use_d=False)
+        # G_losses['L1_target'] = self.opt.t_s_ratio * loss_app_gen_t
         G_losses['GAN_target'] = loss_ad_gen_t * 0.5
         G_losses['VGG_target'] =  self.opt.t_s_ratio * (loss_style_gen_t + loss_content_gen_t)
         G_losses['Face_target'] = loss_face_t
         G_losses['Step_loss'] = loss_step * self.opt.lambda_step * 0.5
-        G_losses['L1_source'] = (1-self.opt.t_s_ratio) * loss_app_gen_s
+        # G_losses['L1_source'] = (1-self.opt.t_s_ratio) * loss_app_gen_s
         G_losses['VGG_source'] = (1-self.opt.t_s_ratio) * (loss_style_gen_s + loss_content_gen_s)
-
-        sample_src = torch.cat([true_src.cpu(), src_map[:, :3].cpu(), fake_src.cpu().detach(), true_src.cpu()], 3)
-        sample_tgt = torch.cat([self.sample_image(tgt_image, tgt_timestep).cpu(), tgt_map[:, :3].cpu(), fake_tgt.cpu().detach(), true_tgt.cpu()], 3)
-        sample = torch.cat([sample_src, sample_tgt], 2)
 
         return G_losses, sample
     def backward_D_basic(self, real, fake, step_true):
-        step_true = step_true.long().to(real.device) - 1
         # Real
         D_real, step_pred_true = self.netD(real)
         D_real_loss = self.GANloss(D_real, True, True)
@@ -192,17 +182,12 @@ class DPTNModel(nn.Module) :
 
         D_losses = {}
 
-        b, c, h, w = src_image.size()
-        tgt_timestep = self.sample_timestep(b)
-        ref_timestep = self.sample_timestep(b, tgt_timestep)
-
         with torch.no_grad():
-            fake_tgt, _ = self.generate_fake_one_step(src_image, src_map, ref_timestep,
-                                                             tgt_image, tgt_map, tgt_timestep)
-            fake_tgt.detach()
+            (gt_tgt_batch, fake_tgt_batch, _, _, gt_step_batch), sample = \
+                self.generate_fake_train(src_image, src_map, tgt_image, tgt_map)
+            fake_tgt_batch.detach()
 
-        true_tgt = self.sample_image(tgt_image, ref_timestep)
-        D_real_loss, real_step, D_fake_loss, fake_step, gradient_penalty = self.backward_D_basic(true_tgt, fake_tgt, ref_timestep)
+        D_real_loss, real_step, D_fake_loss, fake_step, gradient_penalty = self.backward_D_basic(gt_tgt_batch, fake_tgt_batch, gt_step_batch)
         D_losses['Real_loss'] = D_real_loss * 0.5
         D_losses['Real_step'] = real_step * 0.5
         D_losses['Fake_loss'] = D_fake_loss * 0.5
@@ -219,12 +204,12 @@ class DPTNModel(nn.Module) :
         ref_image = self.sample_image(src_image, ref_timestep)
         intput_image = self.sample_image(tgt_image, tgt_timestep)
 
-        fake_tgt, fake_src = self.netG(ref_image, src_map, ref_timestep,
+        fake_tgt, fake_src = self.netG(ref_image, src_map, ref_timestep, src_image,
                                        intput_image, tgt_map, tgt_timestep)
 
         return fake_tgt, fake_src,
 
-    def generate_fake(self,
+    def generate_fake_valid(self,
                       src_image, src_map,
                       tgt_image, tgt_map):
 
@@ -244,7 +229,7 @@ class DPTNModel(nn.Module) :
             ref_timestep = tgt_timestep + 1
             ref_image = self.sample_image(src_image, ref_timestep)
 
-            xt, _ = self.netG(ref_image, src_map, ref_timestep,
+            xt, _ = self.netG(ref_image, src_map, ref_timestep, src_image,
                                xt, tgt_map, tgt_timestep)
 
             gt_tgt = self.sample_image(tgt_image, ref_timestep)
@@ -257,6 +242,50 @@ class DPTNModel(nn.Module) :
         sample = torch.cat([gt_sample, fake_sample], 2)
 
         return sample
+
+    def generate_fake_train(self,
+                      src_image, src_map,
+                      tgt_image, tgt_map):
+
+        b, c, h, w = src_image.size()
+
+        gt_tgts = []
+        fake_tgts = []
+        gt_srcs = []
+        fake_srcs = []
+        gt_steps = []
+
+        init_step = torch.tensor([0 for _ in range(b)])
+        xt = self.sample_image(src_image, init_step)
+
+        for step in range(self.opt.step_size) :
+            tgt_timestep = torch.tensor([step for _ in range(b)])
+            ref_timestep = tgt_timestep + 1
+            ref_image = self.sample_image(src_image, ref_timestep)
+
+            xt, fake_src = self.netG(ref_image, src_map, ref_timestep, src_image,
+                               xt, tgt_map, tgt_timestep)
+
+            gt_tgt = self.sample_image(tgt_image, ref_timestep)
+            gt_src = self.sample_image(src_image, ref_timestep)
+
+            gt_tgts.append(gt_tgt)
+            fake_tgts.append(xt)
+            gt_srcs.append(gt_src)
+            fake_srcs.append(fake_src)
+            gt_steps.append(tgt_timestep)
+
+        gt_tgt_batch = torch.cat(gt_tgts, 0)
+        fake_tgt_batch = torch.cat(fake_tgts, 0)
+        gt_src_batch = torch.cat(gt_srcs, 0)
+        fake_src_batch = torch.cat(fake_srcs, 0)
+        gt_step_batch = torch.cat(gt_steps, 0).to(fake_tgt_batch.device)
+
+        gt_sample = torch.cat(gt_tgts, 3).cpu().detach()
+        fake_sample = torch.cat(fake_tgts, 3).cpu().detach()
+        sample = torch.cat([gt_sample, fake_sample], 2)
+
+        return (gt_tgt_batch, fake_tgt_batch, gt_src_batch, fake_src_batch, gt_step_batch), sample
 
     def get_vis(self, true_list, fake_list):
         gt_vis = torch.cat(true_list, -1)

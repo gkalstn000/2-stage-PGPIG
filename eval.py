@@ -129,6 +129,7 @@ if __name__ == "__main__":
     df_score.to_csv(f'./eval_results/{args.name}.csv')
 
     pd.DataFrame.from_dict(dict_scores).to_csv(f'./eval_results/{args.name}_rank.csv', index=False)
+    print(df_score)
     #
     # fid_score = fid.calculate_from_disk(args.distorated_path, args.fid_real_path)
     # print(f'My FID score {df_score["Total"]["fid"]}')

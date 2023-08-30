@@ -75,6 +75,14 @@ def check_keypoint(keypoint_dict, img_name) :
             return num_keypoint
     assert 'something wrong with check keypoint'
 def preprocess_path_for_deform_task(gt_path, distorted_path):
+    cloth_type = {'fashionWOMENTeesTanks': 'fashionWOMENTees_Tanks', 'fashionWOMENSweatshirtsHoodies': 'fashionWOMENSweatshirts_Hoodies', 'fashionWOMENRompersJumpsuits':'fashionWOMENRompers_Jumpsuits',
+                  'fashionWOMENJacketsCoats':'fashionWOMENJackets_Coats', 'fashionWOMENGraphicTees':'fashionWOMENGraphic_Tees',
+                  'fashionWOMENBlousesShirts': 'fashionWOMENBlouses_Shirts',
+                  'fashionMENTeesTanks': 'fashionMENTees_Tanks',
+                  'fashionMENSweatshirtsHoodies': 'fashionMENSweatshirts_Hoodies',
+                  'fashionMENShirtsPolos': 'fashionMENShirts_Polos', 'fashionMENJacketsVests': 'fashionMENJackets_Vests'}
+
+
     distorted_image_list = sorted(get_image_list(distorted_path))
     if not distorted_image_list :
         distorted_image_list = sorted(get_image_list(os.path.join(distorted_path,'test_latest/images/synthesized_target_image')))
@@ -88,8 +96,10 @@ def preprocess_path_for_deform_task(gt_path, distorted_path):
         image = image.split('_vis')[0] + '.jpg' # if '.jpg' not in image else image.split('_vis')[0]
         gt_image = os.path.join(gt_path, image)
         if not os.path.isfile(gt_image):
-            print(gt_image)
-            continue
+            pre = image.split('id')[0]
+            image = image.replace(pre, cloth_type[pre])
+            gt_image = os.path.join(gt_path, image)
+            # continue
         num_keypoint = check_keypoint(keypoint_dict, image.replace('.png', '.jpg'))
         gt_list[num_keypoint].append(gt_image)
         gt_list[19].append(gt_image)

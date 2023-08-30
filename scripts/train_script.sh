@@ -61,3 +61,5 @@ CUDA_VISIBLE_DEVICES=1 nohup python -m torch.distributed.launch --nproc_per_node
 
 
 CUDA_VISIBLE_DEVICES=0,1 nohup python -m torch.distributed.launch --nproc_per_node=2 --master_port 41121 train.py --id dptn_resize_add --netG dptn --batchSize 20 --num_workers 8 --dataroot /home/work/msha/deepfashion  > dptn_resize_add.out &
+
+CUDA_VISIBLE_DEVICES=0,1 nohup python -m torch.distributed.launch --nproc_per_node=2 --master_port 41121 train.py --id resize_sampling_addemb_origsrc --netG dptn --batchSize 20 --num_workers 8 --dataroot /home/work/msha/deepfashion  > resize_sampling_addemb_origsrc.out &
