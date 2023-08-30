@@ -127,7 +127,7 @@ class DPTNModel(nn.Module) :
 
         if use_d:
             D_fake, step_pred = self.netD(fake_image)
-            loss_step = self.CE(step_pred, true_timestep.long().to(fake_image.device)-1)
+            loss_step = self.CE(step_pred, true_timestep.long())
             loss_ad_gen = self.GANloss(D_fake, True, False) * self.opt.lambda_g
 
             loss_face = self.Faceloss(
@@ -219,7 +219,8 @@ class DPTNModel(nn.Module) :
         fake_tgts = []
 
         init_step = torch.tensor([0 for _ in range(b)])
-        xt = self.sample_image(src_image, init_step)
+        init_noise = torch.normal(mean=0, std=np.sqrt(0.1), size=(b, c, h, w)).to(src_image.device)
+        xt = self.sample_image(src_image, init_step) + init_noise
 
         gt_tgts.extend([src_image.cpu(), tgt_map[:, :3].cpu()])
         fake_tgts.extend([xt.cpu(), tgt_map[:, :3].cpu()])
@@ -256,7 +257,9 @@ class DPTNModel(nn.Module) :
         gt_steps = []
 
         init_step = torch.tensor([0 for _ in range(b)])
-        xt = self.sample_image(src_image, init_step)
+        init_noise = torch.normal(mean=0, std=np.sqrt(0.1), size=(b, c, h, w)).to(src_image.device)
+        xt = self.sample_image(src_image, init_step) + init_noise
+        z = xt
 
         for step in range(self.opt.step_size) :
             tgt_timestep = torch.tensor([step for _ in range(b)])
@@ -282,7 +285,9 @@ class DPTNModel(nn.Module) :
         gt_step_batch = torch.cat(gt_steps, 0).to(fake_tgt_batch.device)
 
         gt_sample = torch.cat(gt_tgts, 3).cpu().detach()
+        gt_sample = torch.cat([tgt_map[:, :3].cpu(), gt_sample], 3)
         fake_sample = torch.cat(fake_tgts, 3).cpu().detach()
+        fake_sample = torch.cat([z.cpu(), fake_sample], 3)
         sample = torch.cat([gt_sample, fake_sample], 2)
 
         return (gt_tgt_batch, fake_tgt_batch, gt_src_batch, fake_src_batch, gt_step_batch), sample
