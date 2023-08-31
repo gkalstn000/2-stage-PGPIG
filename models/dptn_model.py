@@ -267,7 +267,7 @@ class DPTNModel(nn.Module) :
             ref_image = self.sample_image(src_image, ref_timestep)
 
             xt, fake_src = self.netG(ref_image, src_map, ref_timestep, src_image,
-                               xt, tgt_map, tgt_timestep)
+                               xt.detach(), tgt_map, tgt_timestep)
 
             gt_tgt = self.sample_image(tgt_image, ref_timestep)
             gt_src = self.sample_image(src_image, ref_timestep)
