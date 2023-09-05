@@ -45,6 +45,7 @@ class ResDiscriminator(BaseNetwork):
                                      nn.ReLU(),
                                      nn.Linear(256, opt.step_size),
                                      )
+        self.log_softmax = nn.LogSoftmax(dim=1)
     def forward(self, x):
         out = self.block0(x)
         for i in range(self.layers - 1):
@@ -53,4 +54,4 @@ class ResDiscriminator(BaseNetwork):
         b, c, h, w = out.size()
         step = self.fc_step(out.view(b, -1))
         pred = self.conv(self.nonlinearity(out))
-        return pred, F.log_softmax(step, 1)
+        return pred, self.log_softmax(step)

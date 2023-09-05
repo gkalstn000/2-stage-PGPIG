@@ -145,7 +145,7 @@ class DPTNModel(nn.Module) :
 
         (gt_tgt_batch, fake_tgt_batch, gt_src_batch, fake_src_batch, gt_step_batch), sample = \
             self.generate_fake_train(src_image, src_map, tgt_image, tgt_map)
-        tgt_face_batch = tgt_face.tile((self.step_size, 1))
+        tgt_face_batch = tgt_face.tile((self.opt.window_size, 1))
 
         loss_ad_gen_t, loss_style_gen_t, loss_content_gen_t, loss_face_t, loss_step = self.backward_G_basic(fake_tgt_batch, gt_tgt_batch, tgt_face_batch, gt_step_batch, use_d=True)
         _, loss_style_gen_s, loss_content_gen_s, _, _ = self.backward_G_basic(fake_src_batch, gt_src_batch, None, None, use_d=False)
@@ -160,6 +160,7 @@ class DPTNModel(nn.Module) :
         return G_losses, sample
     def backward_D_basic(self, real, fake, step_true):
         # Real
+        step_true = step_true.long()
         D_real, step_pred_true = self.netD(real)
         D_real_loss = self.GANloss(D_real, True, True)
         real_step = self.CE(step_pred_true, step_true) * self.opt.lambda_step
@@ -183,7 +184,7 @@ class DPTNModel(nn.Module) :
         D_losses = {}
 
         with torch.no_grad():
-            (gt_tgt_batch, fake_tgt_batch, _, _, gt_step_batch), sample = \
+            (gt_tgt_batch, fake_tgt_batch, _, _, gt_step_batch), _ = \
                 self.generate_fake_train(src_image, src_map, tgt_image, tgt_map)
             fake_tgt_batch.detach()
 
@@ -219,21 +220,19 @@ class DPTNModel(nn.Module) :
         fake_tgts = []
 
         init_step = torch.tensor([0 for _ in range(b)])
-        init_noise = torch.normal(mean=0, std=np.sqrt(0.1), size=(b, c, h, w)).to(src_image.device)
+        init_noise = torch.normal(mean=0, std=1, size=(b, c, h, w)).to(src_image.device)
         xt = self.sample_image(src_image, init_step) + init_noise
 
         gt_tgts.extend([src_image.cpu(), tgt_map[:, :3].cpu()])
         fake_tgts.extend([xt.cpu(), tgt_map[:, :3].cpu()])
 
         for step in range(self.opt.step_size) :
-            tgt_timestep = torch.tensor([step for _ in range(b)])
-            ref_timestep = tgt_timestep + 1
-            ref_image = self.sample_image(src_image, ref_timestep)
+            input_timestep = torch.tensor([step for _ in range(b)])
 
-            xt, _ = self.netG(ref_image, src_map, ref_timestep, src_image,
-                               xt, tgt_map, tgt_timestep)
+            xt, _ = self.netG(src_image, src_map,
+                               xt, tgt_map, input_timestep)
 
-            gt_tgt = self.sample_image(tgt_image, ref_timestep)
+            gt_tgt = self.sample_image(tgt_image, input_timestep + 1)
 
             gt_tgts.append(gt_tgt.cpu())
             fake_tgts.append(xt.cpu())
@@ -256,27 +255,26 @@ class DPTNModel(nn.Module) :
         fake_srcs = []
         gt_steps = []
 
-        init_step = torch.tensor([0 for _ in range(b)])
-        init_noise = torch.normal(mean=0, std=np.sqrt(0.1), size=(b, c, h, w)).to(src_image.device)
-        xt = self.sample_image(src_image, init_step) + init_noise
+        init_step = self.sample_timestep(b)
+        init_noise = torch.normal(mean=0, std=1, size=(b, c, h, w)).to(src_image.device)
+        xt = self.sample_image(tgt_image, init_step)
+        init_index = init_step == 0
+        xt[init_index] += init_noise[init_index]
         z = xt
 
-        for step in range(self.opt.step_size) :
-            tgt_timestep = torch.tensor([step for _ in range(b)])
-            ref_timestep = tgt_timestep + 1
-            ref_image = self.sample_image(src_image, ref_timestep)
+        for i in range(self.opt.window_size) :
+            input_timestep = init_step + i
 
-            xt, fake_src = self.netG(ref_image, src_map, ref_timestep, src_image,
-                               xt.detach(), tgt_map, tgt_timestep)
+            xt, fake_src = self.netG(src_image, src_map,
+                                     xt.detach(), tgt_map, input_timestep)
 
-            gt_tgt = self.sample_image(tgt_image, ref_timestep)
-            gt_src = self.sample_image(src_image, ref_timestep)
+            gt_tgt = self.sample_image(tgt_image, input_timestep + 1)
 
             gt_tgts.append(gt_tgt)
             fake_tgts.append(xt)
-            gt_srcs.append(gt_src)
+            gt_srcs.append(src_image)
             fake_srcs.append(fake_src)
-            gt_steps.append(tgt_timestep)
+            gt_steps.append(input_timestep)
 
         gt_tgt_batch = torch.cat(gt_tgts, 0)
         fake_tgt_batch = torch.cat(fake_tgts, 0)
@@ -303,17 +301,23 @@ class DPTNModel(nn.Module) :
         return len(self.opt.gpu_ids) > 0
 
     def sample_timestep(self, b, tgt_timestep=None):
-        step = torch.randint(0, self.step_size - 1, (b,))
+        step = torch.randint(0, self.step_size - (self.opt.window_size - 1), (b,))
+        assert step.max() + (self.opt.window_size - 1) < self.step_size, 'Over sampling!'
         if tgt_timestep != None:
             exponential_distribution = dist.Exponential(1)
             step = exponential_distribution.sample((b,)) + tgt_timestep + 1
             step = torch.where(step > self.step_size, self.step_size, step)
-
+        step[0] = 0
         return step.int()
-    def sample_image(self, images, step):
+    def sample_image(self, images, step, sampling_type='linear'):
         min_h, min_w = self.min_size
         max_h, max_w = self.load_size
-        downscale_size = torch.stack([self.exponential_sampling(min_h, max_h, step), self.exponential_sampling(min_w, max_w, step)], dim=1).tolist()
+        if sampling_type == 'exponential' :
+            downscale_size = torch.stack([self.exponential_sampling(min_h, max_h, step), self.exponential_sampling(min_w, max_w, step)], dim=1).tolist()
+        elif sampling_type == 'linear' :
+            downscale_size = torch.stack([self.linear_sampling(min_h, max_h, step), self.linear_sampling(min_w, max_w, step)], dim=1).tolist()
+        else :
+            assert sampling_type in ['exponential', 'linear'], 'sampling image type error [exponential, linear]'
 
         result_batch = []
         for img, size in zip(images, downscale_size) :
@@ -328,3 +332,11 @@ class DPTNModel(nn.Module) :
                                          self.step_size + 1)
 
         return torch.round(logspace_values[index.tolist()]).int()
+
+
+    def linear_sampling(self, min_value, max_value, index):
+        linspace_values = torch.linspace(torch.tensor(min_value),
+                                         torch.tensor(max_value),
+                                         self.step_size + 1)
+
+        return torch.round(linspace_values[index.tolist()]).int()

@@ -67,3 +67,5 @@ CUDA_VISIBLE_DEVICES=0,1 nohup python -m torch.distributed.launch --nproc_per_no
 CUDA_VISIBLE_DEVICES=3 nohup python -m torch.distributed.launch --nproc_per_node=1 --master_port 24113 train.py --id dptn_fullstep --netG dptn --batchSize 3 --num_workers 4  > dptn_fullstep.out &
 
 CUDA_VISIBLE_DEVICES=0 nohup python -m torch.distributed.launch --nproc_per_node=1 --master_port 32412 train.py --id dptn_fullstep_detach --netG dptn --batchSize 4 --num_workers 4 --dataroot /home/work/msha/deepfashion  > dptn_fullstep_detach.out &
+CUDA_VISIBLE_DEVICES=0 nohup python -m torch.distributed.launch --nproc_per_node=1 --master_port 32412 train.py --id dptn_fullstep_3 --netG dptn --batchSize 7 --num_workers 10 --dataroot /home/work/msha/deepfashion  > dptn_fullstep_3.out &
+

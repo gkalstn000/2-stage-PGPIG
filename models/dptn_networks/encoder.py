@@ -209,7 +209,7 @@ class SourceEncoder(nn.Module):
 
         norm_layer = modules.get_norm_layer(norm_type=opt.norm)
         nonlinearity = modules.get_nonlinearity_layer(activation_type=opt.activation)
-        input_nc = opt.image_nc * 2
+        input_nc = opt.image_nc * 1
 
         self.block0 = modules.EncoderBlockOptimized(input_nc, opt.ngf, norm_layer,
                                                     nonlinearity, opt.use_spect_g, opt.use_coord)
