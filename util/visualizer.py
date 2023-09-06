@@ -28,7 +28,7 @@ class Visualizer():
             resume = 'auto'
         else :
             resume = False
-        wandb.init(project="DPTN", name=opt.id, settings=wandb.Settings(code_dir="."), resume=resume)
+        wandb.init(project="DPTN", name=opt.id, settings=wandb.Settings(code_dir="."), resume=False)
         self.wandb = wandb
         self.opt = opt
         self.tf_log = not opt.no_log

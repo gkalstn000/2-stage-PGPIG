@@ -280,10 +280,11 @@ class DPTNModel(nn.Module) :
                                      xt.detach(), tgt_map, input_timestep)
 
             gt_tgt = self.sample_image(tgt_image, input_timestep + 1)
+            gt_src = self.sample_image(src_image, input_timestep + 1)
 
             gt_tgts.append(gt_tgt)
             fake_tgts.append(xt)
-            gt_srcs.append(src_image)
+            gt_srcs.append(gt_src)
             fake_srcs.append(fake_src)
             gt_steps.append(input_timestep)
 
@@ -295,9 +296,11 @@ class DPTNModel(nn.Module) :
 
         gt_sample = torch.cat(gt_tgts, 3).cpu().detach()
         gt_sample = torch.cat([tgt_map[:, :3].cpu(), gt_sample], 3)
+        fake_src_sample = torch.cat(fake_srcs, 3).cpu().detach()
+        fake_src_sample = torch.cat([src_image.cpu(), fake_src_sample], 3)
         fake_sample = torch.cat(fake_tgts, 3).cpu().detach()
         fake_sample = torch.cat([z.cpu(), fake_sample], 3)
-        sample = torch.cat([gt_sample, fake_sample], 2)
+        sample = torch.cat([fake_src_sample, gt_sample, fake_sample], 2)
 
         return (gt_tgt_batch, fake_tgt_batch, gt_src_batch, fake_src_batch, gt_step_batch), sample
 
