@@ -30,7 +30,7 @@ class DPTNModel(nn.Module) :
 
         # set loss functions
         if opt.isTrain:
-            self.GANloss = loss.GANLoss(opt.gan_mode).cuda()
+            self.GANloss = loss.GANLoss('hinge', tensor=self.FloatTensor, opt=self.opt).cuda()
             self.L1loss = torch.nn.L1Loss()
             self.Vggloss = loss.VGGLoss().cuda()
             self.CE = torch.nn.NLLLoss()
@@ -113,28 +113,38 @@ class DPTNModel(nn.Module) :
         Ft = torch.cat((target_face_, source_face_), 0)
 
         return Is, Bs, Fs, It, Bt, Ft
-    def backward_G_basic(self, fake_image, target_image, face, true_timestep, use_d):
+    def backward_G_basic(self, fake_image, target_image, target_map, face, true_timestep, use_d):
         # Calculate reconstruction loss
         # Calculate GAN loss
         loss_ad_gen = None
         loss_step = None
         loss_face = None
-
+        GAN_Feat_loss = None
         # loss_app_gen = self.L1loss(fake_image, target_image) * self.opt.lambda_rec
         cont, style = self.Vggloss(fake_image, target_image)
         loss_content_gen = cont * self.opt.lambda_content
         loss_style_gen = style * self.opt.lambda_style
 
         if use_d:
-            D_fake, step_pred = self.netD(fake_image)
-            loss_step = self.CE(step_pred, true_timestep.long())
-            loss_ad_gen = self.GANloss(D_fake, True, False) * self.opt.lambda_g
+            pred_fake, pred_real, pred_step_fake, pred_step_real = self.discriminate(target_map, fake_image, target_image)
+            loss_step = self.CE(pred_step_fake, true_timestep.long())
+            loss_ad_gen = self.GANloss(pred_fake, True, for_discriminator=False) * self.opt.lambda_g
 
             loss_face = self.Faceloss(
                 util.crop_face_from_output(fake_image, face),
                 util.crop_face_from_output(target_image, face))
 
-        return loss_ad_gen, loss_style_gen, loss_content_gen, loss_face, loss_step
+            num_D = len(pred_fake)
+            GAN_Feat_loss = self.FloatTensor(1).fill_(0)
+            for i in range(num_D):  # for each discriminator
+                # last output is the final prediction, so we exclude it
+                num_intermediate_outputs = len(pred_fake[i]) - 1
+                for j in range(num_intermediate_outputs):  # for each layer output
+                    unweighted_loss = self.L1loss(
+                        pred_fake[i][j], pred_real[i][j].detach())
+                    GAN_Feat_loss += unweighted_loss * self.opt.lambda_feat / num_D
+
+        return loss_ad_gen, loss_style_gen, loss_content_gen, loss_face, loss_step, GAN_Feat_loss
     def compute_generator_loss(self,
                                src_image, src_map, src_face,
                                tgt_image, tgt_map, tgt_face):
@@ -146,9 +156,9 @@ class DPTNModel(nn.Module) :
         (gt_tgt_batch, fake_tgt_batch, gt_src_batch, fake_src_batch, gt_step_batch), sample = \
             self.generate_fake_train(src_image, src_map, tgt_image, tgt_map)
         tgt_face_batch = tgt_face.tile((self.opt.window_size, 1))
-
-        loss_ad_gen_t, loss_style_gen_t, loss_content_gen_t, loss_face_t, loss_step = self.backward_G_basic(fake_tgt_batch, gt_tgt_batch, tgt_face_batch, gt_step_batch, use_d=True)
-        _, loss_style_gen_s, loss_content_gen_s, _, _ = self.backward_G_basic(fake_src_batch, gt_src_batch, None, None, use_d=False)
+        tgt_map_batch = tgt_map.tile((self.opt.window_size, 1, 1, 1))
+        loss_ad_gen_t, loss_style_gen_t, loss_content_gen_t, loss_face_t, loss_step, GAN_Feat_loss = self.backward_G_basic(fake_tgt_batch, gt_tgt_batch, tgt_map_batch, tgt_face_batch, gt_step_batch, use_d=True)
+        _, loss_style_gen_s, loss_content_gen_s, _, _, _ = self.backward_G_basic(fake_src_batch, gt_src_batch, None, None, None, use_d=False)
         # G_losses['L1_target'] = self.opt.t_s_ratio * loss_app_gen_t
         G_losses['GAN_target'] = loss_ad_gen_t * 0.5
         G_losses['VGG_target'] =  self.opt.t_s_ratio * (loss_style_gen_t + loss_content_gen_t)
@@ -156,18 +166,19 @@ class DPTNModel(nn.Module) :
         G_losses['Step_loss'] = loss_step * self.opt.lambda_step * 0.5
         # G_losses['L1_source'] = (1-self.opt.t_s_ratio) * loss_app_gen_s
         G_losses['VGG_source'] = (1-self.opt.t_s_ratio) * (loss_style_gen_s + loss_content_gen_s)
+        G_losses['GAN_Feat'] = GAN_Feat_loss
 
         return G_losses, sample
-    def backward_D_basic(self, real, fake, step_true):
+    def backward_D_basic(self, real, fake, bone, step_true):
         # Real
         step_true = step_true.long()
-        D_real, step_pred_true = self.netD(real)
-        D_real_loss = self.GANloss(D_real, True, True)
-        real_step = self.CE(step_pred_true, step_true) * self.opt.lambda_step
+        pred_fake, pred_real, pred_step_fake, pred_step_real = self.discriminate(bone, fake, real)
+
+        D_real_loss = self.GANloss(pred_real, True, for_discriminator=True)
+        real_step = self.CE(pred_step_real, step_true) * self.opt.lambda_step
         # fake
-        D_fake, step_pred_fake = self.netD(fake.detach())
-        D_fake_loss = self.GANloss(D_fake, False, True)
-        fake_step = self.CE(step_pred_fake, step_true) * self.opt.lambda_step
+        D_fake_loss = self.GANloss(pred_fake, False, for_discriminator=True)
+        fake_step = self.CE(pred_step_fake, step_true) * self.opt.lambda_step
 
         # gradient penalty for wgan-gp
         gradient_penalty = 0
@@ -187,8 +198,8 @@ class DPTNModel(nn.Module) :
             (gt_tgt_batch, fake_tgt_batch, _, _, gt_step_batch), _ = \
                 self.generate_fake_train(src_image, src_map, tgt_image, tgt_map)
             fake_tgt_batch.detach()
-
-        D_real_loss, real_step, D_fake_loss, fake_step, gradient_penalty = self.backward_D_basic(gt_tgt_batch, fake_tgt_batch, gt_step_batch)
+        tgt_map_batch = tgt_map.tile((self.opt.window_size, 1, 1, 1))
+        D_real_loss, real_step, D_fake_loss, fake_step, gradient_penalty = self.backward_D_basic(gt_tgt_batch, fake_tgt_batch, tgt_map_batch, gt_step_batch)
         D_losses['Real_loss'] = D_real_loss * 0.5
         D_losses['Real_step'] = real_step * 0.5
         D_losses['Fake_loss'] = D_fake_loss * 0.5
@@ -340,3 +351,35 @@ class DPTNModel(nn.Module) :
                                          self.step_size + 1)
 
         return torch.round(linspace_values[index.tolist()]).int()
+
+    def discriminate(self, input_semantics, fake_image, real_image):
+        fake_concat = torch.cat([input_semantics, fake_image], dim=1)
+        real_concat = torch.cat([input_semantics, real_image], dim=1)
+
+        # In Batch Normalization, the fake and real images are
+        # recommended to be in the same batch to avoid disparate
+        # statistics in fake and real images.
+        # So both fake and real images are fed to D all at once.
+        fake_and_real = torch.cat([fake_concat, real_concat], dim=0)
+
+        discriminator_out, step_pred = self.netD(fake_and_real)
+
+        pred_fake, pred_real = self.divide_pred(discriminator_out)
+        pred_step_fake, pred_step_real = self.divide_pred(step_pred)
+        return pred_fake, pred_real, pred_step_fake, pred_step_real
+
+    # Take the prediction of fake and real images from the combined batch
+    def divide_pred(self, pred):
+        # the prediction contains the intermediate outputs of multiscale GAN,
+        # so it's usually a list
+        if type(pred) == list:
+            fake = []
+            real = []
+            for p in pred:
+                fake.append([tensor[:tensor.size(0) // 2] for tensor in p])
+                real.append([tensor[tensor.size(0) // 2:] for tensor in p])
+        else:
+            fake = pred[:pred.size(0) // 2]
+            real = pred[pred.size(0) // 2:]
+
+        return fake, real

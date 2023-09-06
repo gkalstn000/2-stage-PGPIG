@@ -36,7 +36,7 @@ class TrainOptions(BaseOptions):
 
         # for discriminators
         parser.add_argument('--ndf', type=int, default=64, help='# of discrim filters in first conv layer')
-        parser.add_argument('--netD', type=str, default='res', help='(n_layers|multiscale|image)')
+        parser.add_argument('--netD', type=str, default='Multiscale', help='(n_layers|multiscale|image)')
         parser.add_argument('--dis_layers', type=int, default=4, help='number of layers in D')
         parser.add_argument('--use_spect_d', action='store_false', help='use spectual normalization in generator')
         # for loss weights
