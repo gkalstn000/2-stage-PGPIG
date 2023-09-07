@@ -267,10 +267,10 @@ class DPTNModel(nn.Module) :
         gt_steps = []
 
         init_step = self.sample_timestep(b)
-        init_noise = torch.normal(mean=0, std=1, size=(b, c, h, w)).to(src_image.device)
+        init_noise = torch.normal(mean=0, std=1, size=(b, c, h, w)).to(src_image.device) + self.sample_image(src_image, init_step)
         xt = self.sample_image(tgt_image, init_step)
         init_index = init_step == 0
-        xt[init_index] += init_noise[init_index]
+        xt[init_index] = init_noise[init_index]
         z = xt
 
         for i in range(self.opt.window_size) :
