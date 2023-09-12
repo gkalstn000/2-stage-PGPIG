@@ -65,17 +65,19 @@ class DPTNGenerator(BaseNetwork):
         return self.positional_encoding(step)
 
     def forward(self,
-                ref_image, ref_map,
+                src_input, ref_map,
                 input_image, input_map, input_timestep):
+        src_image, ref_image = torch.chunk(src_input, 2, 1)
         b, c, h, w = ref_image.size()
-        time_emb = timestep_embedding(input_timestep).to(ref_image.device).view(b, 1, h, w)
         # Encode source-to-source
+        time_emb = timestep_embedding(input_timestep+1).to(ref_image.device).view(b, 1, h, w)
         F_s_s = self.En_c(ref_image+time_emb, ref_map)
         # Encode source-to-target
+        time_emb = timestep_embedding(input_timestep).to(ref_image.device).view(b, 1, h, w)
         F_s_t = self.En_c(input_image+time_emb, input_map)
 
         # Source Image Encoding
-        F_s = self.En_s(ref_image+time_emb)
+        F_s = self.En_s(src_image+time_emb)
         # Pose Transformer Module for Dual-task Correlation
         F_s_t, _, _ = self.PTM(F_s_s, F_s_t, F_s)
         # Source-to-source Decoder (only for training)

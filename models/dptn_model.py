@@ -239,11 +239,13 @@ class DPTNModel(nn.Module) :
 
         for step in range(self.opt.step_size) :
             input_timestep = torch.tensor([step for _ in range(b)])
+            gt_tgt = self.sample_image(tgt_image, input_timestep + 1)
+            gt_src = self.sample_image(src_image, input_timestep + 1)
+            src_input = torch.cat([src_image, gt_src], 1)
 
-            xt, _ = self.netG(src_image, src_map,
+            xt, _ = self.netG(src_input, src_map,
                                xt, tgt_map, input_timestep)
 
-            gt_tgt = self.sample_image(tgt_image, input_timestep + 1)
 
             gt_tgts.append(gt_tgt.cpu())
             fake_tgts.append(xt.cpu())
@@ -275,12 +277,12 @@ class DPTNModel(nn.Module) :
 
         for i in range(self.opt.window_size) :
             input_timestep = init_step + i
-
-            xt, fake_src = self.netG(src_image, src_map,
-                                     xt.detach(), tgt_map, input_timestep)
-
-            gt_tgt = self.sample_image(tgt_image, input_timestep + 1)
             gt_src = self.sample_image(src_image, input_timestep + 1)
+            gt_tgt = self.sample_image(tgt_image, input_timestep + 1)
+            src_input = torch.cat([src_image, gt_src], 1)
+
+            xt, fake_src = self.netG(src_input, src_map,
+                                     xt.detach(), tgt_map, input_timestep)
 
             gt_tgts.append(gt_tgt)
             fake_tgts.append(xt)
