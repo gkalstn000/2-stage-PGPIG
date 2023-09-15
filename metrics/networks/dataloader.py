@@ -1,57 +1,76 @@
 import torch
 import torch.utils.data as data
-import torchvision.transforms.functional as F
-import torchvision.transforms as transforms
 import cv2
 import numpy as np
-from PIL import Image
+import os
 from imageio import imread
+import glob
 
-
-
-interpolation_dict = {'bilinear' : Image.BILINEAR,
-                      'nearest' : Image.NEAREST,
-                      'bicubic' : Image.BICUBIC,
-                      'area': None}
-
-
-
-class MetricDataset(data.Dataset) :
-    def __init__(self, opt, gt_list, distorated_list):
-        super(MetricDataset, self).__init__()
-        self.gt_list = gt_list
-        self.distorated_list = distorated_list
-        self.opt = opt
-        transform_list = []
-        transform_list.append(transforms.ToTensor())
-        # transform_list.append(transforms.Normalize((0.5, 0.5, 0.5),(0.5, 0.5, 0.5)))
-        self.trans = transforms.Compose(transform_list)
-        self.interpolation = interpolation_dict[opt.interpolation]
+class Dataset(data.Dataset) :
+    def __init__(self, img_list, resize=True, load_size=(256, 176)):
+        super(Dataset, self).__init__()
+        self.img_list = img_list
+        self.load_size = load_size
+        self.resize = resize
     def __getitem__(self, index):
-        gt_path = self.gt_list[index]
-        distorated_path = self.distorated_list[index]
-        if self.opt.cv2 :
-            gt_image = self.cv2_loading(gt_path)
-            distorated_image = self.cv2_loading(distorated_path)
-            return torch.Tensor(gt_image), torch.Tensor(distorated_image)
-        else :
-            gt_image = Image.open(gt_path).convert('RGB')
-            distorated_image = Image.open(distorated_path).convert('RGB')
-
-            gt_image = F.resize(gt_image, self.opt.load_size, self.interpolation)
-            distorated_image = F.resize(distorated_image, self.opt.load_size, self.interpolation)
-
-            return self.trans(gt_image).float(), self.trans(distorated_image).float(), distorated_path.split('/')[-1].replace('.jpg', '')
-    def cv2_loading(self, image_path):
-        interpolation_dict_ = {'bilinear' : cv2.INTER_LINEAR,
-                              'nearest' : cv2.INTER_NEAREST,
-                              'bicubic' : cv2.INTER_CUBIC,
-                              'area' : cv2.INTER_AREA}
-        img_array = imread(image_path)
-        img_array = cv2.resize(img_array, self.opt.load_size[::-1], interpolation = interpolation_dict_[self.opt.interpolation]).astype(np.float32)
-        img_array = img_array.transpose((2, 0, 1)) / 255.0
-        return img_array
+        img_path = self.img_list[index]
+        img_array = imread(img_path)
+        if self.resize:
+            img_array = cv2.resize(img_array, self.load_size[::-1]).astype(np.float32)
+        return (torch.from_numpy(img_array).permute(2, 0, 1) / 255) * 2 -1
     def __len__(self):
-        return len(self.gt_list)
+        return len(self.img_list)
+
+def get_dataloaders(real_path, gt_path, fake_path) :
+    real_list = [os.path.join(real_path, filename) for filename in os.listdir(real_path)]
+    gt_list, fake_list = preprocess_path_for_deform_task(gt_path, fake_path)
+    real_dl = make_dataloader(Dataset(real_list))
+    gt_dl = make_dataloader(Dataset(gt_list))
+    fake_dl = make_dataloader(Dataset(fake_list, resize=False))
+
+    return real_dl, gt_dl, fake_dl
+def make_dataloader(dataloader, batchsize=32) :
+    return  torch.utils.data.DataLoader(
+            dataloader,
+            batch_size=batchsize,
+            num_workers=8,
+            shuffle=False
+        )
+
+def preprocess_path_for_deform_task(gt_path, distorted_path):
+    distorted_image_list = sorted(get_image_list(distorted_path))
+    gt_list=[]
+    distorated_list=[]
+
+    for distorted_image in distorted_image_list:
+        image = os.path.basename(distorted_image)
+        image = image.split('_2_')[-1]
+        image = image.split('_vis')[0] +'.png'
+        gt_image = os.path.join(gt_path,  image)
+        if not os.path.isfile(gt_image):
+            print(gt_image)
+            continue
+        gt_list.append(gt_image)
+        distorated_list.append(distorted_image)
+
+    return gt_list, distorated_list
 
 
+def get_image_list(flist):
+    if isinstance(flist, list):
+        return flist
+
+    # flist: image file path, image directory path, text file flist path
+    if isinstance(flist, str):
+        if os.path.isdir(flist):
+            flist = list(glob.glob(flist + '/*.jpg')) + list(glob.glob(flist + '/*.png'))
+            flist.sort()
+            return flist
+
+        if os.path.isfile(flist):
+            try:
+                return np.genfromtxt(flist, dtype=np.str)
+            except:
+                return [flist]
+    print('can not read files from %s return empty list'%flist)
+    return []

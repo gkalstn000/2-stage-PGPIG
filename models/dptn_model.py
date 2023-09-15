@@ -337,8 +337,8 @@ class DPTNModel(nn.Module) :
 
         result_batch = []
         for img, size in zip(images, downscale_size) :
-            img_down = F.interpolate(img.unsqueeze(0), size = size, mode='bicubic', align_corners=True)
-            img_up = F.interpolate(img_down, size = self.load_size, mode='bicubic', align_corners=True)
+            img_down = F.interpolate(img.unsqueeze(0), size = size, mode='bilinear', align_corners=True)
+            img_up = F.interpolate(img_down, size = self.load_size, mode='bilinear', align_corners=True)
             result_batch.append(img_up)
         return torch.cat(result_batch, 0)
 

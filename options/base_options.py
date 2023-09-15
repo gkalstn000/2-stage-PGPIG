@@ -19,7 +19,7 @@ class BaseOptions():
 
     def initialize(self, parser):
         # experiment specifics
-        parser.add_argument('--id', type=str, default='spain', help='name of the experiment. It decides where to store samples and models')
+        parser.add_argument('--id', type=str, default='test', help='name of the experiment. It decides where to store samples and models')
         parser.add_argument('--model', type=str, default='dptn',help='name of the model.')
         parser.add_argument('--norm', type=str, default='instance', help='[spectralinstance|spectralbatch|spectralsyncbatch]')
         parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')

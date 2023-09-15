@@ -102,9 +102,9 @@ class FID():
         return fid_value        
 
 
-    def compute_statistics_of_path(self, path, verbose):
-
-        npz_file = os.path.join(path, 'statistics.npz')
+    def compute_statistics_of_path(self, path, verbose, save_name = None):
+        save_name = 'statistics.npz' if save_name != None else save_name
+        npz_file = os.path.join(path, save_name)
         if os.path.exists(npz_file):
             f = np.load(npz_file)
             m, s = f['mu'][:], f['sigma'][:]

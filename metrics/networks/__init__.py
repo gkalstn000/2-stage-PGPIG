@@ -21,13 +21,7 @@ def pad_256(img):
     result[:,40:216,:] = img
     return result
 
-def make_dataloader(dataloader, batchsize) :
-    return  torch.utils.data.DataLoader(
-            dataloader,
-            batch_size=batchsize,
-            num_workers=40,
-            shuffle=False
-        )
+
 
 def get_image_list(flist):
     if isinstance(flist, list):
@@ -93,7 +87,7 @@ def preprocess_path_for_deform_task(gt_path, distorted_path):
     for distorted_image in tqdm(distorted_image_list, desc='classfing image by keypoints'):
         image = os.path.basename(distorted_image)
         image = image.split('_2_')[-1]
-        image = image.split('_vis')[0] + '.jpg' # if '.jpg' not in image else image.split('_vis')[0]
+        image = image.split('_vis')[0] + '.png' # if '.jpg' not in image else image.split('_vis')[0]
         gt_image = os.path.join(gt_path, image)
         if not os.path.isfile(gt_image):
             pre = image.split('id')[0]
