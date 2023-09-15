@@ -191,7 +191,7 @@ if __name__ == "__main__":
         if os.path.exists(pt_file) :
             lpips_buffer = torch.load(pt_file)
         else :
-            for gt_batch, fake_batch in zip(tqdm(gt_dl, desc=f'Calculating {step}-step reconstruction score'), fake_dl) :
+            for gt_batch, fake_batch in zip(tqdm(gt_dl, desc=f'Calculating {step}-step lpips score'), fake_dl) :
                 fake_batch = fake_batch[:, :, :, 176 * (step - 1): 176 * step].cuda()
                 gt_batch = model.sample_image(gt_batch, sampling_step).cuda()
                 with torch.no_grad() :
