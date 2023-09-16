@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
     real_path = '/datasets/msha/fashion/train_256'
     gt_path = '/datasets/msha/fashion/test_256'
-    fake_path = 'results/nted_fullstep_3window'
+    fake_path = 'results/NTED'
 
     batch_size = 32
     real_dl, gt_dl, fake_dl = get_dataloaders(real_path, gt_path, fake_path, batch_size)
@@ -175,7 +175,7 @@ if __name__ == "__main__":
                     ssim_256 = compare_ssim(gt * 255, fake * 255,
                                             gaussian_weights=True, sigma=1.2,
                                             use_sample_covariance=False, multichannel=True,
-                                            data_range=fake.max() - fake.min())
+                                            data_range=(fake * 255).max() - (fake * 255).min())
 
                     psnr_buffer.append(psnr)
                     ssim_buffer.append(ssim)
@@ -198,8 +198,9 @@ if __name__ == "__main__":
                     lpips_buffer.append(lpips.model.forward(fake_batch, gt_batch))
             lpips_buffer = torch.cat(lpips_buffer,0).squeeze()
             torch.save(lpips_buffer, pt_file)
-
-        score_dict['LPIPS'][step-1] = lpips_buffer.mean()
+        lpips_value = lpips_buffer.mean().cpu().item()
+        score_dict['LPIPS'][step-1] = lpips_value
+        print(f'{step}-step\tFID: {fid_value},\t LPIPS: {lpips_value},\t SSIM_256: {np.round(np.mean(ssim_256_buffer), 6)}')
 
     df_score = pd.DataFrame.from_dict(score_dict).T
     df_score.columns = [f'step_{i}' for i in range(1, 21)]
