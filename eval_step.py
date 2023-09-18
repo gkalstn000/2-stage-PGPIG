@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
     real_path = '/datasets/msha/fashion/train_256'
     gt_path = '/datasets/msha/fashion/test_256'
-    fake_path = 'results/NTED'
+    fake_path = 'results/nted_fullstep_3_gt'
 
     batch_size = 32
     real_dl, gt_dl, fake_dl = get_dataloaders(real_path, gt_path, fake_path, batch_size)
