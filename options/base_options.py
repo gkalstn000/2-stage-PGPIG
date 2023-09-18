@@ -45,8 +45,8 @@ class BaseOptions():
 
         # for displays
         parser.add_argument('--display_winsize', type=int, default=400, help='display window size')
-        parser.add_argument('--step_size', type=int, default=20, help='# of step size')
-        parser.add_argument('--window_size', type=int, default=3, help='# of step size')
+        parser.add_argument('--step_size', type=int, default=5, help='# of step size')
+        parser.add_argument('--window_size', type=int, default=2, help='# of step size')
 
 
         # for generator

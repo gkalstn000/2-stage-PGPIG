@@ -134,15 +134,15 @@ class DPTNModel(nn.Module) :
                 util.crop_face_from_output(fake_image, face),
                 util.crop_face_from_output(target_image, face))
 
-            num_D = len(pred_fake)
-            GAN_Feat_loss = self.FloatTensor(1).fill_(0)
-            for i in range(num_D):  # for each discriminator
-                # last output is the final prediction, so we exclude it
-                num_intermediate_outputs = len(pred_fake[i]) - 1
-                for j in range(num_intermediate_outputs):  # for each layer output
-                    unweighted_loss = self.L1loss(
-                        pred_fake[i][j], pred_real[i][j].detach())
-                    GAN_Feat_loss += unweighted_loss * self.opt.lambda_feat / num_D
+            # num_D = len(pred_fake)
+            # GAN_Feat_loss = self.FloatTensor(1).fill_(0)
+            # for i in range(num_D):  # for each discriminator
+            #     # last output is the final prediction, so we exclude it
+            #     num_intermediate_outputs = len(pred_fake[i]) - 1
+            #     for j in range(num_intermediate_outputs):  # for each layer output
+            #         unweighted_loss = self.L1loss(
+            #             pred_fake[i][j], pred_real[i][j].detach())
+            #         GAN_Feat_loss += unweighted_loss * self.opt.lambda_feat / num_D
 
         return loss_ad_gen, loss_style_gen, loss_content_gen, loss_face, loss_step, GAN_Feat_loss
     def compute_generator_loss(self,
@@ -166,7 +166,7 @@ class DPTNModel(nn.Module) :
         G_losses['Step_loss'] = loss_step * self.opt.lambda_step * 0.5
         # G_losses['L1_source'] = (1-self.opt.t_s_ratio) * loss_app_gen_s
         G_losses['VGG_source'] = (1-self.opt.t_s_ratio) * (loss_style_gen_s + loss_content_gen_s)
-        G_losses['GAN_Feat'] = GAN_Feat_loss
+        # G_losses['GAN_Feat'] = GAN_Feat_loss
 
         return G_losses, sample
     def backward_D_basic(self, real, fake, bone, step_true):
@@ -325,7 +325,7 @@ class DPTNModel(nn.Module) :
             step = torch.where(step > self.step_size, self.step_size, step)
         step[0] = 0
         return step.int()
-    def sample_image(self, images, step, sampling_type='linear'):
+    def sample_image(self, images, step, sampling_type='exponential'):
         min_h, min_w = self.min_size
         max_h, max_w = self.load_size
         if sampling_type == 'exponential' :
