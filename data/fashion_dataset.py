@@ -28,7 +28,7 @@ class FashionDataset(BaseDataset) :
     def initialize(self, opt, is_inference):
         self.opt = opt
         self.is_inference = is_inference
-        self.resolution = 'lowers'
+        self.resolution = 'highers'
         path = os.path.join(opt.dataroot, f'{self.resolution}_lmdb')
         self.env = lmdb.open(
             path,

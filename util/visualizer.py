@@ -24,7 +24,7 @@ except ImportError:
 class Visualizer():
     def __init__(self, opt):
         wandb.login()
-        wandb.init(project="DPTN", name=opt.id, settings=wandb.Settings(code_dir="."), resume=opt.continue_train)
+        wandb.init(project="DPTN", name=opt.id, settings=wandb.Settings(code_dir="."))
         self.wandb = wandb
         self.opt = opt
         self.tf_log = not opt.no_log

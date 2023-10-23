@@ -44,7 +44,7 @@ class DPTNModel(nn.Module) :
         elif mode == 'inference' :
             self.netG.eval()
             with torch.no_grad():
-                src_fake, tgt_fake = self.netG(src_image, src_map, tgt_map)
+                tgt_fake, src_fake = self.netG(src_image, src_map, tgt_map)
 
             sample_src = torch.cat([src_image.cpu(), src_map[:, :3].cpu(), src_fake.cpu(), src_image.cpu()], 3)
             sample_tgt = torch.cat([src_image.cpu(), tgt_map[:, :3].cpu(), tgt_fake.cpu(), tgt_image.cpu()], 3)
@@ -131,7 +131,7 @@ class DPTNModel(nn.Module) :
         self.netG.train()
         self.netD.train()
         G_losses = defaultdict(int)
-        src_fake, tgt_fake = self.netG(src_image, src_map, tgt_map)
+        tgt_fake, src_fake = self.netG(src_image, src_map, tgt_map)
 
         loss_app_gen_t, loss_ad_gen_t, loss_style_gen_t, loss_content_gen_t, loss_face_t = self.backward_G_basic(tgt_fake, tgt_image, tgt_face, use_d=True)
         loss_app_gen_s, _, loss_style_gen_s, loss_content_gen_s, loss_face_s = self.backward_G_basic(src_fake, src_image, src_face, use_d=False)
@@ -169,7 +169,7 @@ class DPTNModel(nn.Module) :
         self.netD.train()
         D_losses = {}
         with torch.no_grad():
-            _, tgt_fake = self.netG(src_image, src_map, tgt_map)
+            tgt_fake, src_fake = self.netG(src_image, src_map, tgt_map)
 
         D_real_loss, D_fake_loss, gradient_penalty = self.backward_D_basic(tgt_image, tgt_fake)
         D_losses['Real_loss'] = D_real_loss * 0.5
